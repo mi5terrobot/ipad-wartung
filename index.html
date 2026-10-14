@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="iPad-Wartung">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0b5d75">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>iPad-Wartung</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one-hand phone app — sticky header, scrolling content, fixed bottom tab bar; tiles grid for iPads, bottom sheet for the check */
+:root{
+  --bg:#eef2f3; --surface:#ffffff; --surface2:#f6f8f9; --fg:#13212a; --muted:#5a6a74; --line:#d5dde1;
+  --accent:#0b5d75; --accent-fg:#ffffff; --accent-soft:#dcecf1;
+  --ok:#1d7f46; --ok-soft:#e1f2e7; --warn:#a86a0c; --warn-soft:#fbefd9; --bad:#bb2f22; --bad-soft:#fbe3df; --none:#8796a0; --none-soft:#e9eef0;
+  --font:"Atkinson Hyperlegible", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --r:14px; --tabh:64px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161b; --surface:#16222a; --surface2:#1b2a33; --fg:#e4ecf0; --muted:#93a4ae; --line:#283841;
+  --accent:#5cb8d3; --accent-fg:#06232d; --accent-soft:#16384a;
+  --ok:#4cc483; --ok-soft:#163626; --warn:#e5ab45; --warn-soft:#3a2b10; --bad:#f07466; --bad-soft:#401b17; --none:#7d8d97; --none-soft:#22313a;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e161b; --surface:#16222a; --surface2:#1b2a33; --fg:#e4ecf0; --muted:#93a4ae; --line:#283841;
+  --accent:#5cb8d3; --accent-fg:#06232d; --accent-soft:#16384a;
+  --ok:#4cc483; --ok-soft:#163626; --warn:#e5ab45; --warn-soft:#3a2b10; --bad:#f07466; --bad-soft:#401b17; --none:#7d8d97; --none-soft:#22313a;
+  color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--fg);font-family:var(--font);font-size:16px;line-height:1.4;-webkit-tap-highlight-color:transparent;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
+header.top h1{font-size:19px;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-weight:700;font-size:14px}
+.sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.d-ok{background:var(--ok)}.d-mangel{background:var(--warn)}.d-defekt,.d-fehlt{background:var(--bad)}.d-none{background:var(--none)}
+main{padding-block:14px calc(var(--tabh) + 28px + env(safe-area-inset-bottom,0px))}
+.stack{display:flex;flex-direction:column;gap:12px}
+.banner{border-radius:var(--r);padding:12px 14px;font-size:14px}
+.banner.demo{background:var(--accent-soft);color:var(--fg)}
+.banner.err{background:var(--bad-soft);color:var(--fg)}
+.run{background:var(--surface);border:2px solid var(--accent);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.run b{font-size:17px}
+.btn{border:0;border-radius:12px;padding:14px 16px;font-weight:700;font-size:16px;min-height:50px;background:var(--surface2);border:1px solid var(--line)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.okb{background:var(--ok);color:#fff;border-color:var(--ok)}
+.btn.danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+.btn.small{min-height:40px;padding:8px 12px;font-size:14px}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>.btn{flex:1 1 140px}
+.seg{display:flex;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:3px}
+.seg button{flex:1;border:0;background:none;padding:9px;border-radius:9px;font-weight:700;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:left;width:100%;display:flex;flex-direction:column;gap:8px}
+.card h3{margin:0;font-size:17px;line-height:1.25}
+.meta{font-size:13px;color:var(--muted)}
+.counts{display:flex;gap:12px;flex-wrap:wrap;font-size:14px}
+.counts span{display:inline-flex;align-items:center;gap:5px}
+.bar{height:6px;border-radius:3px;background:var(--none-soft);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:2px 7px;letter-spacing:.02em}
+.b-over{background:var(--bad-soft);color:var(--bad)}
+.b-done{background:var(--ok-soft);color:var(--ok)}
+.b-info{background:var(--none-soft);color:var(--muted)}
+.cardhead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.back{border:0;background:none;color:var(--accent);font-weight:700;padding:6px 0;font-size:16px;display:inline-flex;gap:4px;align-items:center}
+h2{font-size:22px;margin:0;text-wrap:balance}
+.label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.tile{position:relative;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 6px 8px;min-height:78px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.tile .n{font-size:24px;font-weight:700;line-height:1}
+.tile .s{font-size:11px;color:var(--muted);text-align:center;line-height:1.15}
+.tile.t-mangel{background:var(--warn-soft);border-color:var(--warn)}
+.tile.t-defekt,.tile.t-fehlt{background:var(--bad-soft);border-color:var(--bad)}
+.tile.done{border-width:2px}
+.tile.done.t-ok{border-color:var(--ok);background:var(--ok-soft)}
+.tile .ck{position:absolute;top:5px;right:6px;width:16px;height:16px}
+.list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.li{display:flex;gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line)}
+.li:first-child{border-top:0}
+.li .grow{flex:1;min-width:0}
+.li .nr{font-size:20px;font-weight:700;min-width:44px}
+.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 8px}
+.stat .v{font-size:22px;font-weight:700}
+.stat .k{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;line-height:1.15}
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-top:1px solid var(--line);white-space:nowrap}
+th{border-top:0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+td.num,th.num{text-align:right}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav.tabs .in{max-width:720px;margin:0 auto;display:flex;height:var(--tabh)}
+nav.tabs button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:700;color:var(--muted)}
+nav.tabs button[aria-current="page"]{color:var(--accent)}
+nav.tabs svg{width:24px;height:24px}
+.cnt{background:var(--bad);color:#fff;border-radius:999px;font-size:11px;padding:0 6px;margin-left:3px}
+.scrim{position:fixed;inset:0;background:rgba(5,15,20,.45);z-index:10;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:720px;border-radius:20px 20px 0 0;max-height:92%;overflow-y:auto;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 4px}
+.toggles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tg{border:2px solid var(--line);background:var(--surface2);border-radius:12px;padding:14px 10px;font-weight:700;font-size:15px;min-height:62px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.tg small{font-weight:400;color:var(--muted);font-size:12px}
+.tg[aria-pressed="true"]{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
+.tg[aria-pressed="true"] small{color:var(--bad)}
+.tg.warnish[aria-pressed="true"]{border-color:var(--warn);background:var(--warn-soft);color:var(--warn)}
+.tg.warnish[aria-pressed="true"] small{color:var(--warn)}
+textarea,input[type=text]{width:100%;font:inherit;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface2);color:var(--fg)}
+textarea{min-height:70px;resize:vertical}
+pre.report{white-space:pre-wrap;word-break:break-word;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:14px;font-family:var(--font);font-size:15px;margin:0}
+.hint{font-size:13px;color:var(--muted)}
+.persons{display:grid;gap:10px}
+.persons button{display:flex;justify-content:space-between;align-items:center}
+.persons .big{font-size:24px;font-weight:700}
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+summary{font-weight:700;cursor:pointer}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + 16px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:700;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+.empty{text-align:center;color:var(--muted);padding:28px 12px}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+</head><body>
+
+<header class="top"><div class="wrap">
+  <h1 id="hTitle">iPad-Wartung</h1>
+  <span class="sync" id="sync"></span>
+  <button class="chip" id="personChip" data-act="settings" aria-label="Person und Einstellungen"></button>
+</div></header>
+<main><div class="wrap" id="view"></div></main>
+<nav class="tabs" id="tabs"><div class="in">
+  <button data-tab="rooms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Räume</button>
+  <button data-tab="issues"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg><span>Mängel<span id="issueCnt"></span></span></button>
+  <button data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Übersicht</button>
+  <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Einstellungen</button>
+</div></nav>
+<div id="overlay"></div>
+<div id="toastHost"></div>
+
+<script>
+/* ===== Konfiguration (wird normalerweise über den Einrichtungslink gesetzt) ===== */
+var EMBEDDED_DEVICES = /*__DEVICES__*/[];
+var APP_VERSION = "1.0";
+var SCOPES = ["Files.ReadWrite.All"];
+var MSAL_URL = "https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js";
+var OVERDUE_DAYS = 30;
+
+/* ===== kleine Helfer ===== */
+function $(s){return document.querySelector(s)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function ls(k,v){try{if(v===undefined){var x=localStorage.getItem("ipw."+k);return x==null?null:JSON.parse(x)}if(v===null)localStorage.removeItem("ipw."+k);else localStorage.setItem("ipw."+k,JSON.stringify(v))}catch(e){return null}}
+var mem={}; function store(k,v){ if(v===undefined){var r=ls(k);return r!=null?r:(k in mem?mem[k]:null)} mem[k]=v; ls(k,v) }
+function uid(){return "x"+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function pad(n){return n<10?"0"+n:""+n}
+function isoLocal(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"T"+pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())}
+function parseTime(v){
+  if(v==null||v==="")return null;
+  if(typeof v==="number"){var u=new Date(Math.round((v-25569)*86400000));return new Date(u.getUTCFullYear(),u.getUTCMonth(),u.getUTCDate(),u.getUTCHours(),u.getUTCMinutes(),u.getUTCSeconds())}
+  var s=String(v).trim().replace(" ","T"); var m=s.match(/^(\d{4})-(\d\d)-(\d\d)(?:T(\d\d):(\d\d)(?::(\d\d))?)?/);
+  if(m)return new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+  var m2=s.match(/^(\d\d?)\.(\d\d?)\.(\d{4})(?:T(\d\d?):(\d\d))?/); if(m2)return new Date(+m2[3],+m2[2]-1,+m2[1],+(m2[4]||0),+(m2[5]||0));
+  var d=new Date(s); return isNaN(d)?null:d;
+}
+function fmtD(d){return d?pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear():"–"}
+function fmtDT(d){return d?fmtD(d)+", "+pad(d.getHours())+":"+pad(d.getMinutes()):"–"}
+function daysAgo(d){return d?Math.floor((Date.now()-d.getTime())/86400000):Infinity}
+function yes(v){v=String(v==null?"":v).trim().toLowerCase();return v==="ja"||v==="true"||v==="1"||v==="x"}
+function toast(t){var h=$("#toastHost");h.innerHTML='<div class="toast" role="status">'+esc(t)+'</div>';clearTimeout(toast.t);toast.t=setTimeout(function(){h.innerHTML=""},2200)}
+
+/* ===== Zustand ===== */
+var S={mode:"demo",devices:[],checks:[],queue:store("queue")||[],person:store("person"),tab:"rooms",room:null,showAll:false,
+  issuesMine:true,syncState:"",error:"",account:null,cfg:store("cfg")||{},confirmAll:false,report:null,openNr:null};
+
+/* Geräte aus Zeilen (Kopfzeile + Werte) lesen – Spaltenreihenfolge egal */
+function parseDevices(values){
+  if(!values||!values.length)return [];
+  var h=values[0].map(function(x){return String(x).trim().toLowerCase()});
+  function g(r,k){var i=h.indexOf(k);return i<0?"":(r[i]==null?"":String(r[i]).trim())}
+  return values.slice(1).map(function(r){return{nr:Number(g(r,"ipad_nr")),status:g(r,"status"),standort:g(r,"standort"),kurs:g(r,"kurs_projekt"),jamf:g(r,"name_jamf"),
+    betreuer:g(r,"betreuer"),pruefer:g(r,"pruefer").toUpperCase(),anschluss:g(r,"anschluss"),pencil:g(r,"pencil"),da:g(r,"dauerausleihe"),bem:g(r,"bemerkung")}})
+    .filter(function(d){return d.nr&&d.status.toLowerCase()==="aktiv"});
+}
+var CHECK_COLS=["id","zeitpunkt","person","ipad_nr","standort","vorhanden","kabel_defekt","buchse_defekt","geraet_defekt","bemerkung","typ","durchgang"];
+function checkToRow(c){return [c.id,c.ts,c.person,c.nr,c.standort,c.vorhanden?"ja":"nein",c.kabel?"ja":"nein",c.buchse?"ja":"nein",c.geraet?"ja":"nein",c.bem||"",c.typ,c.dg||""]}
+function parseChecks(values){
+  if(!values||!values.length)return [];
+  var h=values[0].map(function(x){return String(x).trim().toLowerCase()});
+  function g(r,k){var i=h.indexOf(k);return i<0?"":r[i]}
+  return values.slice(1).map(function(r){var t=parseTime(g(r,"zeitpunkt"));return{id:String(g(r,"id")||""),ts:t?isoLocal(t):"",t:t,person:String(g(r,"person")||""),nr:Number(g(r,"ipad_nr")),standort:String(g(r,"standort")||""),
+    vorhanden:!(String(g(r,"vorhanden")).toLowerCase()==="nein"),kabel:yes(g(r,"kabel_defekt")),buchse:yes(g(r,"buchse_defekt")),geraet:yes(g(r,"geraet_defekt")),bem:String(g(r,"bemerkung")||""),typ:String(g(r,"typ")||"pruefung").toLowerCase(),dg:String(g(r,"durchgang")||"")}})
+    .filter(function(c){return c.id&&c.nr&&c.t});
+}
+function hydrate(c){c.t=parseTime(c.ts);return c}
+
+/* ===== abgeleitete Daten ===== */
+function checkable(){return S.devices.filter(function(d){return d.pruefer})}
+function persons(){var p={};checkable().forEach(function(d){p[d.pruefer]=(p[d.pruefer]||0)+1});return p}
+function allChecks(){var seen={},out=[];S.checks.concat(S.queue.map(hydrate)).forEach(function(c){if(!seen[c.id]){seen[c.id]=1;out.push(c)}});return out}
+var IDX=null;
+function index(){
+  var latest={},lastCheck={},hist={};
+  allChecks().slice().sort(function(a,b){return a.t-b.t}).forEach(function(c){latest[c.nr]=c;if(c.typ==="pruefung")lastCheck[c.nr]=c;(hist[c.nr]=hist[c.nr]||[]).push(c)});
+  IDX={latest:latest,lastCheck:lastCheck,hist:hist};
+}
+function stateOfCheck(c){if(!c)return"none";if(c.typ==="behoben")return"ok";if(!c.vorhanden)return"fehlt";if(c.geraet)return"defekt";if(c.kabel||c.buchse)return"mangel";return"ok"}
+function stateOf(nr){return stateOfCheck(IDX.latest[nr])}
+function issuesOf(c){if(!c||c.typ==="behoben")return[];if(!c.vorhanden)return["Fehlt"];var a=[];if(c.geraet)a.push("Gerät defekt");if(c.kabel)a.push("Ladekabel defekt");if(c.buchse)a.push("Ladebuchse defekt");return a}
+var STATE_TXT={ok:"OK",mangel:"Mangel",defekt:"Defekt",fehlt:"Fehlt",none:"Nie geprüft"};
+function rooms(list){var m={},order=[];list.forEach(function(d){if(!m[d.standort]){m[d.standort]=[];order.push(d.standort)}m[d.standort].push(d)});return order.map(function(k){return{name:k,devices:m[k]}})}
+function roomInfo(r){
+  var c={ok:0,mangel:0,defekt:0,fehlt:0,none:0},oldest=null,newest=null,never=false,doneDg=0,dg=currentDg();
+  r.devices.forEach(function(d){c[stateOf(d.nr)]++;var lc=IDX.lastCheck[d.nr];if(!lc)never=true;else{if(!oldest||lc.t<oldest)oldest=lc.t;if(!newest||lc.t>newest)newest=lc.t}
+    if(dg&&doneInDg(d.nr,dg))doneDg++});
+  return{c:c,newest:newest,overdue:never||daysAgo(oldest)>OVERDUE_DAYS,never:never,doneDg:doneDg}
+}
+function currentDg(){var d=store("dg");return d&&d.person===S.person?d:null}
+function doneInDg(nr,dg){var h=IDX.hist[nr]||[];for(var i=h.length-1;i>=0;i--){if(h[i].dg===dg.id&&h[i].typ==="pruefung")return h[i]}return null}
+
+/* ===== Speichern ===== */
+function addChecks(list){
+  var dg=currentDg(); if(!dg){dg={id:"d"+Date.now().toString(36),person:S.person,start:isoLocal(new Date())};store("dg",dg)}
+  list.forEach(function(c){c.id=uid();c.ts=isoLocal(new Date());c.t=parseTime(c.ts);c.person=S.person;c.dg=c.typ==="pruefung"?dg.id:"";S.queue.push(c)});
+  persistQueue(); index(); render(); flush();
+}
+function persistQueue(){store("queue",S.queue.map(function(c){var o={};for(var k in c)if(k!=="t")o[k]=c[k];return o}))}
+
+/* ===== Demo-Modus ===== */
+function seedDemo(){
+  var demo=store("demoChecks"); if(demo){S.checks=demo.map(hydrate);return}
+  var rnd=(function(s){return function(){s=(s*9301+49297)%233280;return s/233280}})(7);
+  var out=[],now=Date.now(),defects={221:"kabel",160:"buchse",330:"geraet",409:"fehlt",375:"kabel",298:"buchse"};
+  rooms(checkable()).forEach(function(r,i){
+    var age=r.name==="Musik"?36:(8+i*2)%27+3, base=new Date(now-age*86400000); base.setHours(9+(i%5),15,0,0);
+    if(r.name==="B020")return;
+    r.devices.forEach(function(d,j){var t=new Date(base.getTime()+j*40000),f=defects[d.nr]||"";
+      out.push({id:"demo"+d.nr,ts:isoLocal(t),person:d.pruefer,nr:d.nr,standort:d.standort,vorhanden:f!=="fehlt",kabel:f==="kabel",buchse:f==="buchse",geraet:f==="geraet",
+        bem:f==="geraet"?"Display gesprungen (Beispiel)":f==="fehlt"?"Nicht im Wagen (Beispiel)":"",typ:"pruefung",dg:"demo"})})});
+  store("demoChecks",out); S.checks=out.map(hydrate);
+}
+
+/* ===== Microsoft 365 (Excel in OneDrive/SharePoint über Microsoft Graph) ===== */
+var msalApp=null;
+function cfgOk(){var c=S.cfg;return !!(c&&c.clientId&&c.tenantId&&c.fileUrl)}
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("Skript konnte nicht geladen werden"))};document.head.appendChild(s)})}
+function redirectUri(){return location.origin+location.pathname}
+async function initMsal(){
+  if(!window.msal)await loadScript(MSAL_URL);
+  msalApp=new msal.PublicClientApplication({auth:{clientId:S.cfg.clientId,authority:"https://login.microsoftonline.com/"+S.cfg.tenantId,redirectUri:redirectUri()},cache:{cacheLocation:"localStorage"}});
+  var r=await msalApp.handleRedirectPromise(); if(r&&r.account)msalApp.setActiveAccount(r.account);
+  S.account=msalApp.getActiveAccount()||msalApp.getAllAccounts()[0]||null; if(S.account)msalApp.setActiveAccount(S.account);
+}
+async function token(){
+  if(!S.account)throw Object.assign(new Error("Nicht angemeldet"),{login:true});
+  try{return (await msalApp.acquireTokenSilent({scopes:SCOPES,account:S.account})).accessToken}
+  catch(e){await msalApp.acquireTokenRedirect({scopes:SCOPES});throw e}
+}
+function login(){msalApp&&msalApp.loginRedirect({scopes:SCOPES})}
+function logout(){msalApp&&msalApp.logoutRedirect({account:S.account})}
+async function graph(path,opt){
+  opt=opt||{}; var t=await token();
+  var r=await fetch("https://graph.microsoft.com/v1.0"+path,{method:opt.method||"GET",headers:{Authorization:"Bearer "+t,"Content-Type":"application/json"},body:opt.body?JSON.stringify(opt.body):undefined});
+  if(!r.ok){var m="";try{m=(await r.json()).error.message}catch(e){}throw Object.assign(new Error("Microsoft 365 meldet "+r.status+(m?": "+m:"")),{status:r.status})}
+  return r.status===204?null:r.json();
+}
+async function itemBase(){
+  var it=store("item"); if(it&&it.url===S.cfg.fileUrl)return it.base;
+  var enc="u!"+btoa(unescape(encodeURIComponent(S.cfg.fileUrl))).replace(/=+$/,"").replace(/\//g,"_").replace(/\+/g,"-");
+  var d=await graph("/shares/"+enc+"/driveItem?$select=id,parentReference");
+  var base="/drives/"+d.parentReference.driveId+"/items/"+d.id+"/workbook"; store("item",{url:S.cfg.fileUrl,base:base}); return base;
+}
+var flushing=false;
+async function flush(){
+  if(S.mode!=="m365"||flushing||!S.queue.length)return updateSync();
+  if(!navigator.onLine){S.syncState="offline";return updateSync()}
+  flushing=true; updateSync();
+  try{var base=await itemBase();
+    while(S.queue.length){var batch=S.queue.slice(0,40);
+      await graph(base+"/tables/Pruefungen/rows/add",{method:"POST",body:{values:batch.map(checkToRow)}});
+      batch.forEach(function(c){S.checks.push(hydrate(c))}); S.queue=S.queue.slice(batch.length); persistQueue(); cacheChecks();}
+    S.syncState="ok"; S.error="";
+  }catch(e){S.syncState="err"; if(!e.login)S.error="Speichern in Excel fehlgeschlagen: "+e.message+". Die Prüfungen bleiben auf dem iPhone gespeichert und werden später übertragen."}
+  flushing=false; updateSync(); render();
+}
+function cacheChecks(){store("cacheChecks",S.checks.map(function(c){var o={};for(var k in c)if(k!=="t")o[k]=c[k];return o}))}
+async function pull(){
+  if(S.mode!=="m365")return;
+  if(!navigator.onLine){S.syncState="offline";updateSync();return}
+  S.syncState="busy"; updateSync();
+  try{var base=await itemBase();
+    var a=await graph(base+"/tables/iPads/range"), b=await graph(base+"/tables/Pruefungen/range");
+    S.devices=parseDevices(a.values); S.checks=parseChecks(b.values);
+    store("cacheDevices",S.devices); cacheChecks();
+    var ids={}; S.checks.forEach(function(c){ids[c.id]=1}); S.queue=S.queue.filter(function(c){return !ids[c.id]}); persistQueue();
+    S.syncState="ok"; S.error=""; index(); render(); flush();
+  }catch(e){S.syncState="err"; S.error=e.login?"":"Daten konnten nicht geladen werden: "+e.message; index(); render(); updateSync()}
+}
+function updateSync(){
+  var el=$("#sync"),q=S.queue.length,t;
+  if(S.mode==="demo")t='<span class="dot d-none"></span>Demo';
+  else if(!S.account)t='<span class="dot d-defekt"></span>Nicht angemeldet';
+  else if(S.syncState==="busy"||flushing)t='<span class="dot d-mangel"></span>Synchronisiere…';
+  else if(S.syncState==="offline")t='<span class="dot d-mangel"></span>Offline'+(q?" · "+q+" offen":"");
+  else if(S.syncState==="err")t='<span class="dot d-defekt"></span>'+(q?q+" nicht übertragen":"Fehler");
+  else t='<span class="dot d-ok"></span>'+(q?q+" offen":"Aktuell");
+  el.innerHTML=t;
+}
+
+/* ===== Bericht ===== */
+function buildReport(dg){
+  var mine=allChecks().filter(function(c){return c.dg===dg.id&&c.typ==="pruefung"}).sort(function(a,b){return a.t-b.t});
+  var last={};mine.forEach(function(c){last[c.nr]=c});var list=Object.keys(last).map(function(k){return last[k]});
+  var cnt={ok:0,mangel:0,defekt:0,fehlt:0},roomsSeen=[];
+  list.forEach(function(c){cnt[stateOfCheck(c)]++;if(roomsSeen.indexOf(c.standort)<0)roomsSeen.push(c.standort)});
+  var probs=list.filter(function(c){return stateOfCheck(c)!=="ok"}).sort(function(a,b){return a.nr-b.nr});
+  var all=checkable(),tot={ok:0,mangel:0,defekt:0,fehlt:0,none:0};all.forEach(function(d){tot[stateOf(d.nr)]++});
+  var over=rooms(all).filter(function(r){return roomInfo(r).overdue}).map(function(r){return r.name});
+  var start=parseTime(dg.start),end=list.length?list[list.length-1].t:new Date();
+  var L=[];
+  L.push("iPad-Wartung "+fmtD(end)+" – "+dg.person);
+  L.push("");
+  L.push("Geprüft: "+list.length+" iPads in "+roomsSeen.length+(roomsSeen.length===1?" Raum":" Räumen")+(start&&fmtD(start)!==fmtD(end)?" ("+fmtD(start)+"–"+fmtD(end)+")":""));
+  L.push("Räume: "+(roomsSeen.join(", ")||"–"));
+  L.push("✅ OK: "+cnt.ok+"  ⚠️ Mängel: "+cnt.mangel+"  ❌ Defekt: "+cnt.defekt+"  ❓ Fehlt: "+cnt.fehlt);
+  L.push("");
+  if(probs.length){L.push("Probleme:");probs.forEach(function(c){L.push("• iPad "+c.nr+" ("+c.standort+"): "+issuesOf(c).join(", ")+(c.bem?" – "+c.bem:""))})}
+  else L.push("Keine Probleme gefunden.");
+  L.push("");
+  L.push("Gesamtstand ("+all.length+" iPads in der Wartung): "+tot.ok+" OK, "+tot.mangel+" mit Mängeln, "+tot.defekt+" defekt, "+tot.fehlt+" fehlen"+(tot.none?", "+tot.none+" noch nie geprüft":""));
+  L.push(over.length?"Überfällig (länger als "+OVERDUE_DAYS+" Tage nicht geprüft): "+over.join(", "):"Keine Räume überfällig.");
+  return L.join("\n");
+}
+
+/* ===== Ansichten ===== */
+var ICON_CK='<svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:var(--ok)"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+function countsHtml(c){return '<div class="counts">'+[["ok","OK"],["mangel","Mangel"],["defekt","Defekt"],["fehlt","Fehlt"],["none","Nie geprüft"]].filter(function(x){return c[x[0]]||x[0]==="ok"}).map(function(x){return '<span><i class="dot d-'+x[0]+'"></i>'+c[x[0]]+" "+x[1]+"</span>"}).join("")+"</div>"}
+function demoBanner(){return S.mode==="demo"?'<div class="banner demo"><b>Demo-Modus.</b> Die Prüfungen sind Beispieldaten und bleiben nur auf diesem Gerät. Unter Einstellungen verbindest du die App mit eurer Excel-Datei.</div>':""}
+function errBanner(){return S.error?'<div class="banner err">'+esc(S.error)+"</div>":""}
+
+function viewPerson(){
+  var p=persons(),keys=Object.keys(p).sort();
+  return '<div class="stack"><h2>Wer prüft heute?</h2><p class="hint">Du siehst danach zuerst deine eigenen Räume. Wechseln kannst du jederzeit oben rechts.</p>'+demoBanner()+
+   (keys.length?'<div class="persons">'+keys.map(function(k){return '<button class="card" data-act="person" data-p="'+esc(k)+'" style="flex-direction:row"><span class="big">'+esc(k)+'</span><span class="meta">'+p[k]+" iPads in "+rooms(checkable().filter(function(d){return d.pruefer===k})).length+" Räumen</span></button>"}).join("")+"</div>"
+   :'<div class="empty">Noch keine Geräte geladen. '+(S.mode==="m365"&&!S.account?'<br><br><button class="btn primary" data-act="login">Mit Schulkonto anmelden</button>':S.mode==="demo"?"Bitte zuerst die Verbindung zu eurer Excel-Datei einrichten.<br><br><button class=\"btn primary\" data-act=\"settings\">Einstellungen öffnen</button>":"In der Excel-Datei muss die Spalte „pruefer“ ausgefüllt sein.")+"</div>")+"</div>";
+}
+
+function viewRooms(){
+  var dg=currentDg(),list=S.showAll?checkable():checkable().filter(function(d){return d.pruefer===S.person}),rs=rooms(list),h=[];
+  h.push(errBanner(),demoBanner());
+  if(S.mode==="m365"&&!S.account)h.push('<div class="banner err">Bitte melde dich mit deinem Schulkonto an, damit die Prüfungen in Excel gespeichert werden.<div style="margin-top:10px"><button class="btn primary small" data-act="login">Anmelden</button></div></div>');
+  if(dg){var done=0,mineAll=checkable().filter(function(d){return d.pruefer===S.person});mineAll.forEach(function(d){if(doneInDg(d.nr,dg))done++});
+    h.push('<div class="run"><div><span class="label">Wartung läuft seit '+fmtD(parseTime(dg.start))+'</span><br><b>'+done+" von "+mineAll.length+' deiner iPads geprüft</b></div><div class="bar"><i style="width:'+(mineAll.length?Math.round(done/mineAll.length*100):0)+'%"></i></div><button class="btn primary" data-act="finish">Wartung abschließen &amp; Bericht</button></div>');}
+  h.push('<div class="seg" role="group" aria-label="Räume filtern"><button data-act="mine" aria-pressed="'+!S.showAll+'">Meine Räume</button><button data-act="all" aria-pressed="'+S.showAll+'">Alle Räume</button></div>');
+  if(!rs.length)h.push('<div class="empty">Keine Räume zugeordnet.</div>');
+  rs.forEach(function(r){var i=roomInfo(r),owner=r.devices[0].pruefer;
+    h.push('<button class="card" data-act="room" data-room="'+esc(r.name)+'"><div class="cardhead"><h3>'+esc(r.name)+'</h3>'+(i.overdue?'<span class="badge b-over">Überfällig</span>':dg&&i.doneDg===r.devices.length?'<span class="badge b-done">Erledigt</span>':"")+'</div>'+
+      '<div class="meta">'+r.devices.length+" iPads"+(S.showAll?" · "+esc(owner):"")+" · zuletzt geprüft: "+(i.newest?fmtD(i.newest):"nie")+"</div>"+countsHtml(i.c)+
+      (dg&&i.doneDg?'<div class="bar" title="Fortschritt"><i style="width:'+Math.round(i.doneDg/r.devices.length*100)+'%"></i></div><div class="meta">'+i.doneDg+"/"+r.devices.length+" in diesem Durchgang</div>":"")+"</button>")});
+  return '<div class="stack">'+h.join("")+"</div>";
+}
+
+function viewRoom(){
+  var r=rooms(checkable()).filter(function(x){return x.name===S.room})[0]; if(!r){S.room=null;return viewRooms()}
+  var dg=currentDg(),open=r.devices.filter(function(d){return !(dg&&doneInDg(d.nr,dg))}),
+      openOk=open.filter(function(d){var s=stateOf(d.nr);return s==="ok"||s==="none"}),openBad=open.length-openOk.length,i=roomInfo(r),h=[];
+  h.push('<button class="back" data-act="back">‹ Räume</button>');
+  h.push('<div><h2>'+esc(r.name)+'</h2><div class="meta">'+r.devices.length+" iPads · "+esc(r.devices[0].pruefer)+" · zuletzt geprüft: "+(i.newest?fmtD(i.newest):"nie")+"</div></div>");
+  h.push(countsHtml(i.c));
+  if(open.length){
+    if(S.confirmAll)h.push('<div class="run"><b>'+openOk.length+' iPads als OK speichern?</b><div class="row"><button class="btn okb" data-act="allok-yes">Ja, alle OK</button><button class="btn" data-act="allok-no">Abbrechen</button></div></div>');
+    else h.push('<button class="btn okb" data-act="allok"'+(openOk.length?"":" disabled")+'>Alle restlichen OK ('+openOk.length+')</button>');
+    if(openBad)h.push('<p class="hint">'+openBad+(openBad===1?" iPad hat":" iPads haben")+" einen offenen Mangel und "+(openBad===1?"wird":"werden")+" nicht automatisch auf OK gesetzt. Bitte einzeln antippen.</p>");
+  } else h.push('<div class="banner demo"><b>Raum erledigt.</b> Alle iPads sind in diesem Durchgang geprüft.</div>');
+  h.push('<p class="hint">iPad antippen, Mängel markieren, speichern. Ein Haken bedeutet: in diesem Durchgang geprüft.</p>');
+  h.push('<div class="grid">'+r.devices.map(function(d){var s=stateOf(d.nr),done=dg&&doneInDg(d.nr,dg);
+    return '<button class="tile t-'+s+(done?" done":"")+'" data-act="dev" data-nr="'+d.nr+'" aria-label="iPad '+d.nr+", "+STATE_TXT[s]+(done?", geprüft":"")+'">'+(done?ICON_CK:"")+'<span class="n">'+d.nr+'</span><span class="s">'+(done||s!=="none"?esc(issuesOf(IDX.latest[d.nr]).join(", ")||STATE_TXT[s]):"offen")+"</span></button>"}).join("")+"</div>");
+  return '<div class="stack">'+h.join("")+"</div>";
+}
+
+function viewIssues(){
+  var base=S.issuesMine?checkable().filter(function(d){return d.pruefer===S.person}):checkable();
+  var list=base.filter(function(d){var s=stateOf(d.nr);return s!=="ok"&&s!=="none"});
+  var h=['<h2>Offene Mängel</h2>','<div class="seg" role="group"><button data-act="imine" aria-pressed="'+S.issuesMine+'">Meine</button><button data-act="iall" aria-pressed="'+!S.issuesMine+'">Alle</button></div>'];
+  if(!list.length)h.push('<div class="empty">Keine offenen Mängel.</div>');
+  else{h.push('<div class="list">'+list.map(function(d){var c=IDX.latest[d.nr],s=stateOf(d.nr);
+    return '<div class="li"><span class="dot d-'+s+'"></span><span class="nr">'+d.nr+'</span><div class="grow"><b>'+esc(issuesOf(c).join(", "))+'</b><div class="meta">'+esc(d.standort)+" · "+fmtD(c.t)+" · "+esc(c.person)+(c.bem?"<br>„"+esc(c.bem)+"“":"")+'</div></div><button class="btn small" data-act="fixed" data-nr="'+d.nr+'">Behoben</button></div>'}).join("")+"</div>");
+    h.push('<p class="hint">„Behoben“ setzt das iPad wieder auf OK. Das wird mit Datum und deinem Kürzel im Verlauf gespeichert.</p>')}
+  return '<div class="stack">'+h.join("")+"</div>";
+}
+
+function viewOverview(){
+  var all=checkable(),tot={ok:0,mangel:0,defekt:0,fehlt:0,none:0};all.forEach(function(d){tot[stateOf(d.nr)]++});
+  var h=['<h2>Übersicht</h2>',errBanner(),'<div class="stats">'+[["ok","OK"],["mangel","Mängel"],["defekt","Defekt"],["fehlt","Fehlen"],["none","Nie geprüft"]].map(function(x){return '<div class="stat"><div class="v">'+tot[x[0]]+'</div><div class="k"><i class="dot d-'+x[0]+'"></i>'+x[1]+"</div></div>"}).join("")+"</div>",
+    '<p class="hint">'+all.length+" iPads sind in der monatlichen Wartung. Überfällig heißt: mindestens ein iPad im Raum wurde länger als "+OVERDUE_DAYS+" Tage nicht geprüft.</p>"];
+  h.push('<div class="label">Räume</div><div class="tbl"><table><thead><tr><th>Raum</th><th>Prüfer</th><th class="num">iPads</th><th class="num">Probleme</th><th>Zuletzt</th></tr></thead><tbody>'+
+    rooms(all).map(function(r){var i=roomInfo(r),p=i.c.mangel+i.c.defekt+i.c.fehlt;return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.devices[0].pruefer)+'</td><td class="num">'+r.devices.length+'</td><td class="num">'+(p?'<b style="color:var(--bad)">'+p+"</b>":"0")+'</td><td>'+(i.newest?fmtD(i.newest):"nie")+(i.overdue?' <span class="badge b-over">Überfällig</span>':"")+"</td></tr>"}).join("")+"</tbody></table></div>");
+  var da=S.devices.filter(function(d){return !d.pruefer&&d.da.toLowerCase()==="ja"}),g={},order=[];
+  da.forEach(function(d){var k=d.kurs||d.jamf||"Ohne Kurs";if(!g[k]){g[k]=[];order.push(k)}g[k].push(d)});
+  h.push('<details><summary>Dauerausleihe – '+da.length+' iPads (nur Anzeige)</summary><div class="tbl" style="margin-top:10px"><table><thead><tr><th>Kurs / Projekt</th><th>Betreuer</th><th class="num">iPads</th><th>Standort</th><th>Nummern</th></tr></thead><tbody>'+
+    order.map(function(k){var l=g[k],st=[];l.forEach(function(d){if(st.indexOf(d.standort)<0)st.push(d.standort)});var b=[];l.forEach(function(d){if(d.betreuer&&b.indexOf(d.betreuer)<0)b.push(d.betreuer)});
+      return "<tr><td>"+esc(k)+"</td><td>"+esc(b.join(", ")||"–")+'</td><td class="num">'+l.length+"</td><td>"+esc(st.join(", "))+"</td><td>"+esc(l.map(function(d){return d.nr}).join(", "))+"</td></tr>"}).join("")+"</tbody></table></div></details>");
+  var rest=S.devices.filter(function(d){return !d.pruefer&&d.da.toLowerCase()!=="ja"});
+  if(rest.length){var rr=rooms(rest);h.push('<details><summary>Noch nicht in der Wartung – '+rest.length+' iPads</summary><p class="hint">'+rr.map(function(r){return esc(r.name)+" ("+r.devices.length+", Betreuer "+esc(r.devices[0].betreuer||"–")+")"}).join("<br>")+'<br><br>Zum Aufnehmen in der Excel-Datei in der Spalte „pruefer“ ein Kürzel eintragen.</p></details>')}
+  return '<div class="stack">'+h.join("")+"</div>";
+}
+
+function viewSettings(){
+  var p=Object.keys(persons()).sort(),c=S.cfg||{},h=['<h2>Einstellungen</h2>'];
+  h.push('<div class="label">Ich bin</div><div class="seg" role="group">'+p.map(function(k){return '<button data-act="person" data-p="'+esc(k)+'" aria-pressed="'+(k===S.person)+'">'+esc(k)+"</button>"}).join("")+"</div>");
+  h.push('<div class="label" style="margin-top:8px">Verbindung zu Microsoft 365</div>');
+  if(S.mode==="m365")h.push('<div class="card"><b>'+(S.account?"Angemeldet als "+esc(S.account.username):"Nicht angemeldet")+'</b><div class="meta">Daten aus eurer Excel-Datei · '+S.queue.length+' Prüfungen warten auf Übertragung</div><div class="row">'+(S.account?'<button class="btn small" data-act="pull">Jetzt synchronisieren</button><button class="btn small" data-act="logout">Abmelden</button>':'<button class="btn primary small" data-act="login">Anmelden</button>')+"</div></div>");
+  h.push('<details'+(S.mode==="demo"?" open":"")+'><summary>Verbindungsdaten '+(S.mode==="demo"?"eintragen":"ändern")+'</summary><form id="cfgForm" class="stack" style="margin-top:12px">'+
+    '<label class="stack" style="gap:4px"><span class="meta">Anwendungs-ID (Client-ID, von der IT)</span><input type="text" id="cfgClient" autocomplete="off" value="'+esc(c.clientId||"")+'"></label>'+
+    '<label class="stack" style="gap:4px"><span class="meta">Verzeichnis-ID (Tenant-ID, von der IT)</span><input type="text" id="cfgTenant" autocomplete="off" value="'+esc(c.tenantId||"")+'"></label>'+
+    '<label class="stack" style="gap:4px"><span class="meta">Freigabelink der Excel-Datei „iPad-Wartung.xlsx“</span><input type="text" id="cfgFile" autocomplete="off" value="'+esc(c.fileUrl||"")+'"></label>'+
+    '<button class="btn primary" type="submit">Speichern und verbinden</button>'+
+    (S.mode==="m365"?'<button class="btn" type="button" data-act="cfgclear">Verbindung entfernen (zurück zur Demo)</button>':"")+
+    '<p class="hint">Einfacher für die Kollegen: Den Einrichtungslink aus „Link für Kollegen“ verschicken. Wer ihn öffnet, hat alles automatisch eingetragen.</p></form></details>');
+  if(S.mode==="m365")h.push('<button class="btn" data-act="setuplink">Link für Kollegen kopieren</button>');
+  if(S.mode==="demo")h.push('<button class="btn" data-act="demoreset">Demo-Daten zurücksetzen</button>');
+  h.push('<p class="hint">Version '+APP_VERSION+'. Gespeichert werden nur Gerätenummern, Prüfergebnisse und eure Kürzel, keine Schülerdaten.</p>');
+  return '<div class="stack">'+h.join("")+"</div>";
+}
+
+function sheetHtml(nr){
+  var d=S.devices.filter(function(x){return x.nr===nr})[0]; if(!d)return"";
+  var dg=currentDg(),done=dg&&doneInDg(nr,dg),prev=IDX.latest[nr],src=done||(prev&&stateOfCheck(prev)!=="ok"?prev:null);
+  var f=S.form||(S.form={fehlt:src?!src.vorhanden:false,kabel:src?src.kabel:false,buchse:src?src.buchse:false,geraet:src?src.geraet:false,bem:done?done.bem:""});
+  var any=f.fehlt||f.kabel||f.buchse||f.geraet,info=[d.anschluss?d.anschluss:"",d.pencil.toLowerCase()==="ja"?"mit Apple Pencil":"",d.jamf].filter(Boolean).join(" · ");
+  var hist=(IDX.hist[nr]||[]).slice().reverse().slice(0,8);
+  return '<div class="scrim" data-act="close"><div class="sheet" role="dialog" aria-modal="true" aria-label="iPad '+nr+' prüfen" data-stop="1"><div class="grab"></div>'+
+   '<div class="cardhead"><div><h2>iPad '+nr+'</h2><div class="meta">'+esc(d.standort)+(info?" · "+esc(info):"")+'</div></div><button class="btn small" data-act="close">Schließen</button></div>'+
+   (done?'<div class="hint">In diesem Durchgang schon geprüft ('+fmtDT(done.t)+'). Speichern ersetzt das Ergebnis.</div>':src?'<div class="hint">Offener Mangel aus der letzten Prüfung ('+fmtD(src.t)+') ist vorausgewählt.</div>':"")+
+   (d.bem?'<div class="hint">Hinweis aus der Liste: '+esc(d.bem)+"</div>":"")+
+   '<div class="toggles">'+
+     '<button class="tg" data-act="tg" data-k="fehlt" aria-pressed="'+f.fehlt+'">Fehlt<small>iPad nicht da</small></button>'+
+     '<button class="tg" data-act="tg" data-k="geraet" aria-pressed="'+f.geraet+'"'+(f.fehlt?" disabled":"")+'>Gerät defekt<small>startet nicht, Display …</small></button>'+
+     '<button class="tg warnish" data-act="tg" data-k="kabel" aria-pressed="'+f.kabel+'"'+(f.fehlt?" disabled":"")+'>Ladekabel defekt<small>'+esc(d.anschluss||"Kabel/Netzteil")+'</small></button>'+
+     '<button class="tg warnish" data-act="tg" data-k="buchse" aria-pressed="'+f.buchse+'"'+(f.fehlt?" disabled":"")+'>Ladebuchse defekt<small>lädt nicht, Wackelkontakt</small></button>'+
+   '</div>'+
+   '<label class="stack" style="gap:4px"><span class="meta">Bemerkung (optional)</span><textarea id="bem" placeholder="z. B. Display gesprungen">'+esc(f.bem)+'</textarea></label>'+
+   '<button class="btn '+(any?"danger":"okb")+'" data-act="save">'+(any?"Mangel speichern":"OK speichern")+'</button>'+
+   (hist.length?'<details><summary>Verlauf</summary><div class="stack" style="gap:6px;margin-top:8px">'+hist.map(function(c){var s=stateOfCheck(c);return '<div class="meta"><i class="dot d-'+s+'"></i> '+fmtDT(c.t)+" · "+esc(c.person)+" · "+(c.typ==="behoben"?"Als behoben markiert":esc(issuesOf(c).join(", ")||"OK"))+(c.bem?" – "+esc(c.bem):"")+"</div>"}).join("")+"</div></details>":"")+
+   "</div></div>";
+}
+
+function reportHtml(){
+  var share=!!navigator.share;
+  return '<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-label="Bericht"><div class="grab"></div><h2>Bericht</h2>'+
+   '<p class="hint">Kopieren und z. B. in Teams oder eine Mail einfügen.</p><pre class="report" id="reportText">'+esc(S.report)+'</pre>'+
+   '<div class="row"><button class="btn primary" data-act="copy">Text kopieren</button>'+(share?'<button class="btn" data-act="share">Teilen</button>':"")+'</div>'+
+   (S.confirmEnd?'<div class="run"><b>Durchgang wirklich beenden?</b><span class="hint">Danach beginnt die nächste Prüfung mit einem neuen Durchgang. Die Ergebnisse bleiben gespeichert.</span><div class="row"><button class="btn primary" data-act="end-yes">Beenden</button><button class="btn" data-act="end-no">Abbrechen</button></div></div>'
+    :'<div class="row"><button class="btn" data-act="closereport">Weiter prüfen</button><button class="btn okb" data-act="end">Durchgang beenden</button></div>')+"</div></div>";
+}
+
+function render(){
+  if(!IDX)index();
+  $("#personChip").textContent=S.person||"Person";
+  if(S.tab==="settings"&&(!S.person||!persons()[S.person])){$("#tabs").hidden=true;$("#view").innerHTML='<div class="stack"><button class="back" data-act="tohome">‹ Zurück</button>'+viewSettings()+"</div>";$("#overlay").innerHTML="";updateSync();return}
+  var v;
+  if((!S.person||!persons()[S.person])&&S.tab!=="settings"){v=viewPerson();$("#tabs").hidden=true}
+  else{$("#tabs").hidden=false;
+    v=S.tab==="rooms"?(S.room?viewRoom():viewRooms()):S.tab==="issues"?viewIssues():S.tab==="overview"?viewOverview():viewSettings();
+    Array.prototype.forEach.call(document.querySelectorAll("nav.tabs button"),function(b){b.setAttribute("aria-current",b.dataset.tab===S.tab?"page":"false")});
+    var n=checkable().filter(function(d){var s=stateOf(d.nr);return d.pruefer===S.person&&s!=="ok"&&s!=="none"}).length;
+    $("#issueCnt").innerHTML=n?'<span class="cnt">'+n+"</span>":"";}
+  $("#view").innerHTML=v;
+  $("#overlay").innerHTML=S.report!=null?reportHtml():S.openNr!=null?sheetHtml(S.openNr):"";
+  updateSync();
+}
+
+/* ===== Bedienung ===== */
+document.addEventListener("click",function(e){
+  var t=e.target.closest("[data-act],[data-tab]"); if(!t)return;
+  if(t.dataset.tab){S.tab=t.dataset.tab;S.room=null;S.confirmAll=false;render();window.scrollTo(0,0);return}
+  var a=t.dataset.act;
+  if(a==="close"){if(t.classList.contains("scrim")&&e.target!==t)return;S.openNr=null;S.form=null;render();return}
+  if(a==="person"){S.person=t.dataset.p;store("person",S.person);S.tab="rooms";S.room=null;render();return}
+  if(a==="tohome"){S.tab="rooms";render();return}
+  if(a==="settings"){S.tab="settings";S.room=null;render();return}
+  if(a==="mine"||a==="all"){S.showAll=a==="all";render();return}
+  if(a==="imine"||a==="iall"){S.issuesMine=a==="imine";render();return}
+  if(a==="room"){S.room=t.dataset.room;S.confirmAll=false;render();window.scrollTo(0,0);return}
+  if(a==="back"){S.room=null;S.confirmAll=false;render();return}
+  if(a==="dev"){S.openNr=Number(t.dataset.nr);S.form=null;render();return}
+  if(a==="tg"){var f=S.form;f.bem=$("#bem").value;f[t.dataset.k]=!f[t.dataset.k];if(t.dataset.k==="fehlt"&&f.fehlt){f.kabel=f.buchse=f.geraet=false}render();return}
+  if(a==="save"){var f2=S.form,d=S.devices.filter(function(x){return x.nr===S.openNr})[0];f2.bem=$("#bem").value.trim();
+    addChecks([{nr:d.nr,standort:d.standort,vorhanden:!f2.fehlt,kabel:f2.kabel,buchse:f2.buchse,geraet:f2.geraet,bem:f2.bem,typ:"pruefung"}]);
+    S.openNr=null;S.form=null;render();toast("iPad "+d.nr+" gespeichert");return}
+  if(a==="allok"){S.confirmAll=true;render();return}
+  if(a==="allok-no"){S.confirmAll=false;render();return}
+  if(a==="allok-yes"){var r=rooms(checkable()).filter(function(x){return x.name===S.room})[0],dg=currentDg();
+    var l=r.devices.filter(function(d){var s=stateOf(d.nr);return !(dg&&doneInDg(d.nr,dg))&&(s==="ok"||s==="none")});
+    S.confirmAll=false;addChecks(l.map(function(d){return{nr:d.nr,standort:d.standort,vorhanden:true,kabel:false,buchse:false,geraet:false,bem:"",typ:"pruefung"}}));toast(l.length+" iPads als OK gespeichert");return}
+  if(a==="fixed"){var d3=S.devices.filter(function(x){return x.nr===Number(t.dataset.nr)})[0];
+    S.queue.push({id:uid(),ts:isoLocal(new Date()),person:S.person,nr:d3.nr,standort:d3.standort,vorhanden:true,kabel:false,buchse:false,geraet:false,bem:"",typ:"behoben",dg:""});
+    S.queue[S.queue.length-1].t=new Date();persistQueue();index();render();flush();toast("iPad "+d3.nr+" als behoben markiert");return}
+  if(a==="finish"){S.report=buildReport(currentDg());S.confirmEnd=false;render();return}
+  if(a==="closereport"){S.report=null;render();return}
+  if(a==="end"){S.confirmEnd=true;render();return}
+  if(a==="end-no"){S.confirmEnd=false;render();return}
+  if(a==="end-yes"){store("dg",null);S.report=null;S.confirmEnd=false;render();toast("Durchgang beendet");return}
+  if(a==="copy"){var txt=S.report;var done=function(){toast("Text kopiert")};
+    try{navigator.clipboard.writeText(txt).then(done,function(){selectReport()})}catch(err){selectReport()}return}
+  if(a==="share"){try{navigator.share({title:"iPad-Wartung",text:S.report}).catch(function(){})}catch(err){}return}
+  if(a==="login"){login();return}
+  if(a==="logout"){logout();return}
+  if(a==="pull"){pull();return}
+  if(a==="demoreset"){store("demoChecks",null);ls("demoChecks",null);delete mem.demoChecks;store("queue",[]);S.queue=[];store("dg",null);seedDemo();index();render();toast("Demo zurückgesetzt");return}
+  if(a==="cfgclear"){store("cfg",{});store("item",null);location.reload();return}
+  if(a==="setuplink"){var c=S.cfg,u=redirectUri()+"?c="+encodeURIComponent(c.clientId)+"&t="+encodeURIComponent(c.tenantId)+"&f="+encodeURIComponent(c.fileUrl);
+    try{navigator.clipboard.writeText(u).then(function(){toast("Link kopiert")},function(){toast(u)})}catch(err){toast(u)}return}
+});
+function selectReport(){var el=$("#reportText");if(!el)return;var r=document.createRange();r.selectNodeContents(el);var s=getSelection();s.removeAllRanges();s.addRange(r);toast("Text markiert – jetzt kopieren")}
+document.addEventListener("submit",function(e){if(e.target.id!=="cfgForm")return;e.preventDefault();
+  var c={clientId:$("#cfgClient").value.trim(),tenantId:$("#cfgTenant").value.trim(),fileUrl:$("#cfgFile").value.trim()};
+  if(!c.clientId||!c.tenantId||!c.fileUrl){toast("Bitte alle drei Felder ausfüllen");return}
+  var changed=!S.cfg||S.cfg.fileUrl!==c.fileUrl;
+  if(changed&&S.mode==="m365"&&S.queue.length&&!S.confirmSwitch){S.confirmSwitch=true;toast(S.queue.length+" Prüfungen sind noch nicht übertragen. Erst synchronisieren oder nochmal tippen zum Verwerfen.");return}
+  store("cfg",c);store("item",null);if(changed||S.mode==="demo"){store("queue",[]);store("cacheChecks",null);store("cacheDevices",null);store("dg",null)}location.reload()});
+window.addEventListener("online",function(){flush()});
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.mode==="m365"&&S.account)pull()});
+
+/* ===== Start ===== */
+(async function start(){
+  try{var q=new URLSearchParams(location.search);if(q.get("c")&&q.get("t")&&q.get("f")){S.cfg={clientId:q.get("c"),tenantId:q.get("t"),fileUrl:q.get("f")};store("cfg",S.cfg);store("item",null);history.replaceState(null,"",redirectUri())}}catch(e){}
+  if(cfgOk()){
+    S.mode="m365";
+    S.devices=store("cacheDevices")||[]; S.checks=(store("cacheChecks")||[]).map(hydrate); index(); render();
+    try{await initMsal()}catch(e){S.error="Anmeldung konnte nicht gestartet werden: "+e.message}
+    render(); if(S.account)pull();
+  }else{
+    S.mode="demo"; S.devices=parseDevices(EMBEDDED_DEVICES.length?[["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(EMBEDDED_DEVICES):[]);
+    seedDemo(); S.queue=(store("queue")||[]); index(); render();
+  }
+  try{if("serviceWorker" in navigator&&window.top===window.self&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(function(){})}catch(e){}
+})();
+</script>
+</body></html>
