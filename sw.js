@@ -1,7 +1,7 @@
-const C="ipw-v2";
-const FILES=["./","index.html","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"];
+const C="ipw-v3";
+const FILES=["./","index.html","ipads.xlsx","manifest.webmanifest","icon-180.png","icon-192.png","icon-512.png","https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(FILES)).catch(()=>{}));self.skipWaiting()});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener("fetch",e=>{const u=new URL(e.request.url);
   if(e.request.method!=="GET"||u.hostname.endsWith("microsoft.com")||u.hostname.endsWith("microsoftonline.com"))return;
-  e.respondWith(fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put(e.request,cp))}return r}).catch(()=>caches.match(e.request,{ignoreSearch:true})));});
+  e.respondWith(fetch(e.request).then(r=>{if(r.ok){const cp=r.clone();caches.open(C).then(c=>c.put(u.origin+u.pathname,cp))}return r}).catch(()=>caches.match(e.request,{ignoreSearch:true})));});

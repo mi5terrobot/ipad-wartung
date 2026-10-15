@@ -151,7 +151,7 @@ summary{font-weight:700;cursor:pointer}
 <script>
 /* ===== Konfiguration (wird normalerweise über den Einrichtungslink gesetzt) ===== */
 var EMBEDDED_DEVICES = /*__DEVICES__*/[];
-var APP_VERSION = "1.0";
+var APP_VERSION = "2.0";
 var SCOPES = ["Files.ReadWrite.All"];
 var MSAL_URL = "https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js";
 var OVERDUE_DAYS = 30;
@@ -188,7 +188,7 @@ function parseDevices(values){
   if(!values||!values.length)return [];
   var h=values[0].map(function(x){return String(x).trim().toLowerCase()});
   function g(r,k){var i=h.indexOf(k);return i<0?"":(r[i]==null?"":String(r[i]).trim())}
-  return values.slice(1).map(function(r){return{nr:Number(g(r,"ipad_nr")),status:g(r,"status"),standort:g(r,"standort"),kurs:g(r,"kurs_projekt"),jamf:g(r,"name_jamf"),
+  return values.slice(1).map(function(r){return{nr:Number(g(r,"ipad_nr")),status:g(r,"status")||"aktiv",standort:g(r,"raum")||g(r,"standort"),kurs:g(r,"kurs_projekt"),jamf:g(r,"name_jamf"),
     betreuer:g(r,"betreuer"),pruefer:g(r,"pruefer").toUpperCase(),anschluss:g(r,"anschluss"),pencil:g(r,"pencil"),da:g(r,"dauerausleihe"),bem:g(r,"bemerkung")}})
     .filter(function(d){return d.nr&&d.status.toLowerCase()==="aktiv"});
 }
@@ -326,6 +326,9 @@ function pickFile(){var f=$("#fileIn");f.value="";f.click()}
 async function importFile(file){
   try{
     var X=await xlsxLib(),wb=X.read(await file.arrayBuffer(),{type:"array"});
+    if(S.mode==="local"){var pr=sheetRows(X,wb,"pruefungen");if(!pr)throw new Error("Die Datei enthält kein Blatt „Pruefungen“. Bitte eine Sicherung aus der App wählen.");
+      var have={},n=0;S.checks.forEach(function(c){have[c.id]=1});parseChecks(pr).forEach(function(c){if(!have[c.id]){have[c.id]=1;S.checks.push(c);n++}});
+      saveLocalChecks();index();render();toast(n+" Prüfungen wiederhergestellt");return}
     var dn=wb.SheetNames.filter(function(n){return n.toLowerCase()==="ipads"})[0]||wb.SheetNames[0];
     var raw=X.utils.sheet_to_json(wb.Sheets[dn],{header:1,defval:"",raw:true}).filter(function(r){return r.some(function(v){return v!==""})});
     var devs=parseDevices(raw);
@@ -341,7 +344,7 @@ async function importFile(file){
 async function exportFile(){
   try{
     var X=await xlsxLib(),wb=X.utils.book_new();
-    var raw=store("localRaw")||[["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(S.devices.map(function(d){return[d.nr,"aktiv",d.standort,d.kurs,d.jamf,d.betreuer,d.pruefer,d.anschluss,d.pencil,d.da,d.bem]}));
+    var raw=store("repoRaw")||store("localRaw")||[["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(S.devices.map(function(d){return[d.nr,"aktiv",d.standort,d.kurs,d.jamf,d.betreuer,d.pruefer,d.anschluss,d.pencil,d.da,d.bem]}));
     var ws1=X.utils.aoa_to_sheet(raw);ws1["!cols"]=[{wch:9},{wch:13},{wch:34},{wch:28},{wch:20},{wch:10},{wch:9},{wch:11},{wch:8},{wch:13},{wch:36}];
     X.utils.book_append_sheet(wb,ws1,"iPads");
     var rows=allChecks().slice().sort(function(a,b){return a.t-b.t}).map(checkToRow);
@@ -367,28 +370,69 @@ function localBanner(){
   return h;
 }
 
+/* ===== Geräteliste aus dem Repo (ipads.xlsx) und Login ===== */
+var DATA_FILE="ipads.xlsx";
+function sheetRows(X,wb,name){var n=wb.SheetNames.filter(function(x){return x.toLowerCase()===name})[0];if(!n)return null;
+  return X.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:"",raw:true}).filter(function(r){return r.some(function(v){return v!==""&&v!=null})})}
+function parseAccess(rows){if(!rows||!rows.length)return[];var h=rows[0].map(function(x){return String(x).trim().toLowerCase()}),ik=h.indexOf("kuerzel"),ic=h.indexOf("passwort_code");
+  if(ik<0||ic<0)return[];return rows.slice(1).map(function(r){return{k:String(r[ik]).trim().toUpperCase(),c:String(r[ic]).trim().toLowerCase()}}).filter(function(a){return a.k&&a.c})}
+async function loadRepo(manual){
+  S.loading=true; if(manual)render();
+  try{
+    var X=await xlsxLib(),r=await fetch(DATA_FILE+"?v="+Date.now(),{cache:"no-store"});
+    if(!r.ok)throw new Error(r.status===404?"Die Datei „"+DATA_FILE+"“ liegt nicht im Repo.":"Server meldet "+r.status);
+    var wb=X.read(await r.arrayBuffer(),{type:"array"}),raw=sheetRows(X,wb,"ipads"),acc=parseAccess(sheetRows(X,wb,"zugang"));
+    if(!raw||!parseDevices(raw).length)throw new Error("Im Blatt „iPads“ wurden keine aktiven iPads gefunden.");
+    if(!acc.length)throw new Error("Im Blatt „Zugang“ sind keine Passwort-Codes eingetragen.");
+    store("repoRaw",raw);store("repoAccess",acc);store("repoLoaded",isoLocal(new Date()));
+    S.devices=parseDevices(raw);S.access=acc;S.loadError="";index();
+    if(manual)toast(S.devices.length+" iPads geladen");
+  }catch(e){S.loadError=(store("repoRaw")?"Die Geräteliste konnte nicht aktualisiert werden ("+e.message+"). Die zuletzt geladene Liste wird verwendet.":"Die Geräteliste konnte nicht geladen werden: "+e.message+(navigator.onLine?"":" Beim ersten Start ist Internet nötig."))}
+  S.loading=false;render();
+}
+async function sha256(t){var b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return Array.prototype.map.call(new Uint8Array(b),function(x){return("0"+x.toString(16)).slice(-2)}).join("")}
+async function tryLogin(pw){
+  if(!pw){S.loginError="Bitte Passwort eingeben.";render();return}
+  try{for(var i=0;i<(S.access||[]).length;i++){var a=S.access[i];if(await sha256("ipw|"+a.k+"|"+pw)===a.c){S.person=a.k;S.unlocked=true;S.loginError="";S.tab="rooms";S.room=null;render();return}}
+    S.loginError="Das Passwort stimmt nicht.";}
+  catch(e){S.loginError="Anmeldung nicht möglich: Die Seite muss über https geöffnet werden."}
+  render();var f=$("#pw");if(f)f.focus();
+}
+function viewLogin(){
+  var ready=(S.access||[]).length>0;
+  return '<div class="stack" style="max-width:420px;margin:6vh auto 0"><h2>Anmelden</h2><p class="hint">Gib dein persönliches Passwort ein. Es legt fest, welche Räume du prüfst.</p>'+
+   (S.loadError?'<div class="banner err">'+esc(S.loadError)+'</div>':"")+
+   (ready?'<form id="loginForm" class="stack"><label class="stack" style="gap:4px"><span class="meta">Passwort</span><input type="password" id="pw" autocomplete="current-password" autocapitalize="off" spellcheck="false" style="width:100%;font:inherit;border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface2);color:var(--fg);font-size:18px"></label>'+
+     (S.loginError?'<div class="hint" style="color:var(--bad)" role="alert">'+esc(S.loginError)+'</div>':"")+'<button class="btn primary" type="submit">Anmelden</button></form>'
+    :(S.loading?'<div class="empty">Geräteliste wird geladen …</div>':'<button class="btn primary" data-act="reload">Erneut versuchen</button>'))+"</div>";
+}
+function reportIssue(c){return issuesOf(c).map(function(x){return x==="Fehlt"?"fehlt":x}).join(", ")}
+async function saveText(){
+  var d=new Date(),name="iPad-Wartung_"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"_"+(S.person||"")+".txt";
+  var blob=new Blob([S.report],{type:"text/plain;charset=utf-8"}),file=null;try{file=new File([blob],name,{type:"text/plain"})}catch(e){}
+  try{if(file&&navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}catch(e){if(e&&e.name==="AbortError")return}
+  var u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);toast("Textdatei gespeichert");
+}
+
 /* ===== Bericht ===== */
 function buildReport(dg){
   var mine=allChecks().filter(function(c){return c.dg===dg.id&&c.typ==="pruefung"}).sort(function(a,b){return a.t-b.t});
-  var last={};mine.forEach(function(c){last[c.nr]=c});var list=Object.keys(last).map(function(k){return last[k]});
-  var cnt={ok:0,mangel:0,defekt:0,fehlt:0},roomsSeen=[];
-  list.forEach(function(c){cnt[stateOfCheck(c)]++;if(roomsSeen.indexOf(c.standort)<0)roomsSeen.push(c.standort)});
-  var probs=list.filter(function(c){return stateOfCheck(c)!=="ok"}).sort(function(a,b){return a.nr-b.nr});
-  var all=checkable(),tot={ok:0,mangel:0,defekt:0,fehlt:0,none:0};all.forEach(function(d){tot[stateOf(d.nr)]++});
-  var over=rooms(all).filter(function(r){return roomInfo(r).overdue}).map(function(r){return r.name});
-  var start=parseTime(dg.start),end=list.length?list[list.length-1].t:new Date();
-  var L=[];
-  L.push("iPad-Wartung "+fmtD(end)+" – "+dg.person);
+  var last={};mine.forEach(function(c){last[c.nr]=c});
+  var L=["iPad-Wartung"];
+  var ts=mine.map(function(c){return c.t}),d1=ts[0]||new Date(),d2=ts[ts.length-1]||new Date();
+  L.push("Datum: "+(fmtD(d1)===fmtD(d2)?fmtD(d1):fmtD(d1)+" – "+fmtD(d2)));
+  L.push("Prüfer: "+dg.person);
   L.push("");
-  L.push("Geprüft: "+list.length+" iPads in "+roomsSeen.length+(roomsSeen.length===1?" Raum":" Räumen")+(start&&fmtD(start)!==fmtD(end)?" ("+fmtD(start)+"–"+fmtD(end)+")":""));
-  L.push("Räume: "+(roomsSeen.join(", ")||"–"));
-  L.push("✅ OK: "+cnt.ok+"  ⚠️ Mängel: "+cnt.mangel+"  ❌ Defekt: "+cnt.defekt+"  ❓ Fehlt: "+cnt.fehlt);
+  var rs=rooms(checkable()).map(function(r){var done=r.devices.filter(function(d){return last[d.nr]});return{name:r.name,total:r.devices.length,done:done,
+    probs:done.filter(function(d){return stateOfCheck(last[d.nr])!=="ok"})}}).filter(function(r){return r.done.length});
+  if(!rs.length){L.push("Noch keine iPads geprüft.");return L.join("\n")}
+  var withP=rs.filter(function(r){return r.probs.length}).map(function(r){return r.name});
+  L.push("Geprüfte Räume: "+rs.map(function(r){return r.name}).join(", ")+" – davon mit Problemen: "+(withP.length?withP.join(", "):"keine"));
   L.push("");
-  if(probs.length){L.push("Probleme:");probs.forEach(function(c){L.push("• iPad "+c.nr+" ("+c.standort+"): "+issuesOf(c).join(", ")+(c.bem?" – "+c.bem:""))})}
-  else L.push("Keine Probleme gefunden.");
-  L.push("");
-  L.push("Gesamtstand ("+all.length+" iPads in der Wartung): "+tot.ok+" OK, "+tot.mangel+" mit Mängeln, "+tot.defekt+" defekt, "+tot.fehlt+" fehlen"+(tot.none?", "+tot.none+" noch nie geprüft":""));
-  L.push(over.length?"Überfällig (länger als "+OVERDUE_DAYS+" Tage nicht geprüft): "+over.join(", "):"Keine Räume überfällig.");
+  rs.forEach(function(r){
+    L.push("Raum "+r.name+(r.done.length<r.total?" ("+r.done.length+" von "+r.total+" geprüft)":"")+": "+(r.probs.length?"alles okay, außer bei:":"alles okay"));
+    r.probs.forEach(function(d){var c=last[d.nr];L.push("– iPad "+d.nr+": "+reportIssue(c)+(c.bem?" ("+c.bem+")":""))});
+  });
   return L.join("\n");
 }
 
@@ -399,10 +443,11 @@ function demoBanner(){return S.mode==="demo"?'<div class="banner demo"><b>Demo-M
 function errBanner(){return S.error?'<div class="banner err">'+esc(S.error)+"</div>":""}
 
 function viewPerson(){
+  if(S.mode==="local")return '<div class="stack"><div class="empty">Für '+esc(S.person||"dein Kürzel")+' sind in der Geräteliste keine iPads eingetragen (Spalte „pruefer“).<br><br><button class="btn" data-act="lock">Abmelden</button></div></div>';
   var p=persons(),keys=Object.keys(p).sort();
   return '<div class="stack">'+(keys.length?'<h2>Wer prüft heute?</h2><p class="hint">Du siehst danach zuerst deine eigenen Räume. Wechseln kannst du jederzeit oben rechts.</p>':'<h2>iPad-Wartung einrichten</h2>')+demoBanner()+errBanner()+
    (keys.length?'<div class="persons">'+keys.map(function(k){return '<button class="card" data-act="person" data-p="'+esc(k)+'" style="flex-direction:row"><span class="big">'+esc(k)+'</span><span class="meta">'+p[k]+" iPads in "+rooms(checkable().filter(function(d){return d.pruefer===k})).length+" Räumen</span></button>"}).join("")+"</div>"
-   :'<div class="empty">'+(S.mode==="local"?"":"Noch keine Geräte geladen. ")+(S.mode==="m365"&&!S.account?'<br><br><button class="btn primary" data-act="login">Mit Schulkonto anmelden</button>':S.mode==="local"?"<b>Willkommen!</b><br>Lade einmal die Datei „iPad-Wartung.xlsx“, z. B. aus der Dateien-App oder aus OneDrive. Die Daten bleiben nur auf diesem Gerät.<br><br><button class=\"btn primary\" data-act=\"import\">Excel-Datei laden</button>":"In der Excel-Datei muss die Spalte „pruefer“ ausgefüllt sein.")+"</div>")+"</div>";
+   :'<div class="empty">'+(S.mode==="local"?"":"Noch keine Geräte geladen. ")+(S.mode==="m365"&&!S.account?'<br><br><button class="btn primary" data-act="login">Mit Schulkonto anmelden</button>':S.mode==="local"?"Für dein Kürzel sind in der Geräteliste keine iPads eingetragen (Spalte „pruefer“).<br><br><button class=\"btn\" data-act=\"lock\">Abmelden</button>":"In der Excel-Datei muss die Spalte „pruefer“ ausgefüllt sein.")+"</div>")+"</div>";
 }
 
 function viewRooms(){
@@ -467,12 +512,16 @@ function viewOverview(){
 
 function viewSettings(){
   var p=Object.keys(persons()).sort(),c=S.cfg||{},h=['<h2>Einstellungen</h2>'];
-  h.push('<div class="label">Ich bin</div><div class="seg" role="group">'+p.map(function(k){return '<button data-act="person" data-p="'+esc(k)+'" aria-pressed="'+(k===S.person)+'">'+esc(k)+"</button>"}).join("")+"</div>");
-  if(S.mode==="local"){var lb=parseTime(store("lastBackup"));
-    h.push(errBanner(),'<div class="label" style="margin-top:8px">Daten auf diesem iPhone</div><div class="card"><b>'+S.devices.length+" aktive iPads · "+allChecks().length+' Prüfungen</b><div class="meta">Letzte Sicherung: '+(lb?fmtDT(lb):"noch keine")+'</div>'+
-      '<button class="btn primary" data-act="export">Sicherung als Excel speichern</button><button class="btn" data-act="import">Excel-Datei laden</button>'+
-      '<p class="hint">„Excel-Datei laden“ übernimmt die Geräteliste aus dem Blatt „iPads“. Enthält die Datei auch das Blatt „Pruefungen“ (z. B. eine Sicherung), werden fehlende Prüfungen ergänzt. Vorhandene Prüfungen gehen nicht verloren.</p></div>');
-    h.push(S.confirmWipe?'<div class="run"><b>Wirklich alle Daten auf diesem iPhone löschen?</b><span class="hint">Geräteliste und alle Prüfungen werden entfernt. Vorher eine Sicherung speichern.</span><div class="row"><button class="btn danger" data-act="wipe-yes">Löschen</button><button class="btn" data-act="wipe-no">Abbrechen</button></div></div>':'<button class="btn" data-act="wipe">Alle Daten auf diesem iPhone löschen</button>');}
+  if(S.mode!=="local")h.push('<div class="label">Ich bin</div><div class="seg" role="group">'+p.map(function(k){return '<button data-act="person" data-p="'+esc(k)+'" aria-pressed="'+(k===S.person)+'">'+esc(k)+"</button>"}).join("")+"</div>");
+  if(S.mode==="local"){var lb=parseTime(store("lastBackup")),ll=parseTime(store("repoLoaded"));
+    h.push('<div class="card"><b>Angemeldet als '+esc(S.person)+'</b><button class="btn" data-act="lock">Abmelden</button></div>');
+    h.push(errBanner(),S.loadError?'<div class="banner err">'+esc(S.loadError)+'</div>':"");
+    h.push('<div class="label" style="margin-top:8px">Geräteliste (ipads.xlsx im Repo)</div><div class="card"><b>'+S.devices.length+' aktive iPads</b><div class="meta">Zuletzt geladen: '+(ll?fmtDT(ll):"–")+'</div><button class="btn" data-act="reload">'+(S.loading?"Lädt …":"Neu laden")+'</button><p class="hint">Die App lädt die Liste bei jedem Start neu. Nach dem Hochladen einer neuen Datei auf GitHub kann es bis zu 10 Minuten dauern, bis sie hier ankommt.</p></div>');
+    h.push('<div class="label" style="margin-top:8px">Prüfungen auf diesem iPhone</div><div class="card"><b>'+allChecks().length+' Prüfungen gespeichert</b><div class="meta">Letzte Sicherung: '+(lb?fmtDT(lb):"noch keine")+'</div>'+
+      '<button class="btn primary" data-act="export">Sicherung als Excel speichern</button><button class="btn" data-act="import">Sicherung wiederherstellen</button>'+
+      '<p class="hint">Die Prüfungen liegen nur auf diesem iPhone. Die Sicherung enthält alle Prüfungen. Beim Wiederherstellen werden fehlende ergänzt, nichts wird doppelt.</p></div>');
+    h.push(S.confirmWipe?'<div class="run"><b>Wirklich alle Prüfungen auf diesem iPhone löschen?</b><span class="hint">Vorher eine Sicherung speichern.</span><div class="row"><button class="btn danger" data-act="wipe-yes">Löschen</button><button class="btn" data-act="wipe-no">Abbrechen</button></div></div>':'<button class="btn" data-act="wipe">Alle Prüfungen auf diesem iPhone löschen</button>');}
+  if(S.mode!=="local"){
   h.push('<div class="label" style="margin-top:8px">Verbindung zu Microsoft 365 (optional)</div>');
   if(S.mode==="m365")h.push('<div class="card"><b>'+(S.account?"Angemeldet als "+esc(S.account.username):"Nicht angemeldet")+'</b><div class="meta">Daten aus eurer Excel-Datei · '+S.queue.length+' Prüfungen warten auf Übertragung</div><div class="row">'+(S.account?'<button class="btn small" data-act="pull">Jetzt synchronisieren</button><button class="btn small" data-act="logout">Abmelden</button>':'<button class="btn primary small" data-act="login">Anmelden</button>')+"</div></div>");
   if(S.mode!=="m365")h.push('<p class="hint">Nur nötig, wenn mehrere Personen gemeinsam in eine Excel-Datei in OneDrive/SharePoint speichern sollen. Dafür muss die App in Microsoft Entra registriert sein.</p>');
@@ -484,6 +533,7 @@ function viewSettings(){
     (S.mode==="m365"?'<button class="btn" type="button" data-act="cfgclear">Verbindung entfernen (Daten nur auf diesem Gerät)</button>':"")+
     '<p class="hint">Einfacher für die Kollegen: Den Einrichtungslink aus „Link für Kollegen“ verschicken. Wer ihn öffnet, hat alles automatisch eingetragen.</p></form></details>');
   if(S.mode==="m365")h.push('<button class="btn" data-act="setuplink">Link für Kollegen kopieren</button>');
+  }
   if(S.mode==="demo")h.push('<button class="btn" data-act="demoreset">Demo-Daten zurücksetzen</button>');
   h.push('<p class="hint">Version '+APP_VERSION+'. Gespeichert werden nur Gerätenummern, Prüfergebnisse und eure Kürzel, keine Schülerdaten.</p>');
   return '<div class="stack">'+h.join("")+"</div>";
@@ -514,9 +564,9 @@ function sheetHtml(nr){
 function reportHtml(){
   var share=!!navigator.share;
   return '<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-label="Bericht"><div class="grab"></div><h2>Bericht</h2>'+
-   '<p class="hint">Kopieren und z. B. in Teams oder eine Mail einfügen.</p><pre class="report" id="reportText">'+esc(S.report)+'</pre>'+
+   '<p class="hint">Kopieren und z. B. in Teams oder eine Mail einfügen, oder als Textdatei speichern.</p><pre class="report" id="reportText">'+esc(S.report)+'</pre>'+
    '<div class="row"><button class="btn primary" data-act="copy">Text kopieren</button>'+(share?'<button class="btn" data-act="share">Teilen</button>':"")+'</div>'+
-   (S.mode==="local"?'<button class="btn" data-act="export">Sicherung als Excel speichern</button>':"")+
+   '<button class="btn" data-act="savetxt">Als Textdatei speichern</button>'+
    (S.confirmEnd?'<div class="run"><b>Durchgang wirklich beenden?</b><span class="hint">Danach beginnt die nächste Prüfung mit einem neuen Durchgang. Die Ergebnisse bleiben gespeichert.</span><div class="row"><button class="btn primary" data-act="end-yes">Beenden</button><button class="btn" data-act="end-no">Abbrechen</button></div></div>'
     :'<div class="row"><button class="btn" data-act="closereport">Weiter prüfen</button><button class="btn okb" data-act="end">Durchgang beenden</button></div>')+"</div></div>";
 }
@@ -524,6 +574,8 @@ function reportHtml(){
 function render(){
   if(!IDX)index();
   $("#personChip").textContent=S.person||"Person";
+  if(S.mode==="local"&&!S.unlocked){$("#tabs").hidden=true;$("#personChip").hidden=true;$("#view").innerHTML=viewLogin();$("#overlay").innerHTML="";updateSync();var f=$("#pw");if(f&&!f.value&&document.activeElement!==f)try{f.focus()}catch(e){}return}
+  $("#personChip").hidden=false;
   if(S.tab==="settings"&&(!S.person||!persons()[S.person])){$("#tabs").hidden=true;$("#view").innerHTML='<div class="stack"><button class="back" data-act="tohome">‹ Zurück</button>'+viewSettings()+"</div>";$("#overlay").innerHTML="";updateSync();return}
   var v;
   if((!S.person||!persons()[S.person])&&S.tab!=="settings"){v=viewPerson();$("#tabs").hidden=true}
@@ -572,10 +624,13 @@ document.addEventListener("click",function(e){
     try{navigator.clipboard.writeText(txt).then(done,function(){selectReport()})}catch(err){selectReport()}return}
   if(a==="share"){try{navigator.share({title:"iPad-Wartung",text:S.report}).catch(function(){})}catch(err){}return}
   if(a==="import"){pickFile();return}
+  if(a==="reload"){loadRepo(true);return}
+  if(a==="lock"){S.unlocked=false;S.person=null;S.report=null;S.openNr=null;S.tab="rooms";S.room=null;render();return}
+  if(a==="savetxt"){saveText();return}
   if(a==="export"){exportFile();return}
   if(a==="wipe"){S.confirmWipe=true;render();return}
   if(a==="wipe-no"){S.confirmWipe=false;render();return}
-  if(a==="wipe-yes"){["localRaw","localChecks","queue","dg","person","lastBackup"].forEach(function(k){store(k,null)});S.devices=[];S.checks=[];S.queue=[];S.person=null;S.confirmWipe=false;S.tab="rooms";index();render();toast("Daten gelöscht");return}
+  if(a==="wipe-yes"){["localChecks","queue","dg","lastBackup"].forEach(function(k){store(k,null)});S.checks=[];S.queue=[];S.confirmWipe=false;index();render();toast("Prüfungen gelöscht");return}
   if(a==="login"){login();return}
   if(a==="logout"){logout();return}
   if(a==="pull"){pull();return}
@@ -585,7 +640,8 @@ document.addEventListener("click",function(e){
     try{navigator.clipboard.writeText(u).then(function(){toast("Link kopiert")},function(){toast(u)})}catch(err){toast(u)}return}
 });
 function selectReport(){var el=$("#reportText");if(!el)return;var r=document.createRange();r.selectNodeContents(el);var s=getSelection();s.removeAllRanges();s.addRange(r);toast("Text markiert – jetzt kopieren")}
-document.addEventListener("submit",function(e){if(e.target.id!=="cfgForm")return;e.preventDefault();
+document.addEventListener("submit",function(e){if(e.target.id==="loginForm"){e.preventDefault();tryLogin($("#pw").value);return}
+  if(e.target.id!=="cfgForm")return;e.preventDefault();
   var c={clientId:$("#cfgClient").value.trim(),tenantId:$("#cfgTenant").value.trim(),fileUrl:$("#cfgFile").value.trim()};
   if(!c.clientId||!c.tenantId||!c.fileUrl){toast("Bitte alle drei Felder ausfüllen");return}
   var changed=!S.cfg||S.cfg.fileUrl!==c.fileUrl;
@@ -607,8 +663,8 @@ document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.m
     S.mode="demo"; S.devices=parseDevices([["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(EMBEDDED_DEVICES));
     seedDemo(); S.queue=(store("queue")||[]); flush(); index(); render();
   }else{
-    S.mode="local"; S.devices=parseDevices(store("localRaw")||[]); S.checks=(store("localChecks")||[]).map(hydrate);
-    S.queue=(store("queue")||[]); flush(); index(); render();
+    S.mode="local"; S.unlocked=false; S.person=null; S.devices=parseDevices(store("repoRaw")||[]); S.access=store("repoAccess")||[]; S.checks=(store("localChecks")||[]).map(hydrate);
+    S.queue=(store("queue")||[]); flush(); index(); render(); loadRepo(false);
     try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   }
   try{if("serviceWorker" in navigator&&window.top===window.self&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(function(){})}catch(e){}

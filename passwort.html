@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passwort-Code erzeugen</title>
+<style>
+:root{--bg:#eef2f3;--fg:#13212a;--muted:#5a6a74;--line:#d5dde1;--surface:#fff;--accent:#0b5d75}
+@media (prefers-color-scheme:dark){:root{--bg:#0e161b;--fg:#e4ecf0;--muted:#93a4ae;--line:#283841;--surface:#16222a;--accent:#5cb8d3;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:520px;margin:0 auto;padding:24px 16px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:22px;margin:0}p{margin:0;color:var(--muted);font-size:14px}
+label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted)}
+input{font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg)}
+button{font:inherit;font-weight:700;padding:13px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+output{display:block;word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;min-height:1.4em}
+</style></head><body><main>
+<h1>Passwort-Code erzeugen</h1>
+<p>Für die Datei ipads.xlsx, Blatt „Zugang“. Das Passwort selbst wird nirgends gespeichert oder verschickt, die Berechnung passiert nur in diesem Browser.</p>
+<form id="f" style="display:flex;flex-direction:column;gap:12px">
+<label>Kürzel <input id="k" autocapitalize="characters" autocomplete="off" placeholder="z. B. BEC"></label>
+<label>Neues Passwort <input id="p" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+<button type="submit">Code erzeugen</button></form>
+<output id="o"></output>
+<button id="c" type="button" hidden>Code kopieren</button>
+<p>Den Code in die Spalte „passwort_code“ neben dem Kürzel eintragen, die Datei speichern und als ipads.xlsx ins Repo hochladen.</p>
+</main><script>
+async function h(t){var b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,"0")).join("")}
+document.getElementById("f").addEventListener("submit",async e=>{e.preventDefault();var k=document.getElementById("k").value.trim().toUpperCase(),p=document.getElementById("p").value;
+ var o=document.getElementById("o");if(!k||!p){o.textContent="Bitte Kürzel und Passwort eingeben.";return}
+ try{o.textContent=await h("ipw|"+k+"|"+p);document.getElementById("c").hidden=false}catch(err){o.textContent="Bitte die Seite über https öffnen (GitHub-Adresse)."}});
+document.getElementById("c").addEventListener("click",()=>{var t=document.getElementById("o").textContent;navigator.clipboard.writeText(t).then(()=>{document.getElementById("c").textContent="Kopiert"},()=>{})});
+</script></body></html>
