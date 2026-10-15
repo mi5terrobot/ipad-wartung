@@ -144,6 +144,7 @@ summary{font-weight:700;cursor:pointer}
   <button data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Übersicht</button>
   <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Einstellungen</button>
 </div></nav>
+<input type="file" id="fileIn" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
 <div id="overlay"></div>
 <div id="toastHost"></div>
 
@@ -154,6 +155,7 @@ var APP_VERSION = "1.0";
 var SCOPES = ["Files.ReadWrite.All"];
 var MSAL_URL = "https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js";
 var OVERDUE_DAYS = 30;
+var XLSX_URL = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
 
 /* ===== kleine Helfer ===== */
 function $(s){return document.querySelector(s)}
@@ -279,8 +281,10 @@ async function itemBase(){
   var base="/drives/"+d.parentReference.driveId+"/items/"+d.id+"/workbook"; store("item",{url:S.cfg.fileUrl,base:base}); return base;
 }
 var flushing=false;
+function saveLocalChecks(){store(S.mode==="demo"?"demoChecks":"localChecks",S.checks.map(function(c){var o={};for(var k in c)if(k!=="t")o[k]=c[k];return o}))}
 async function flush(){
-  if(S.mode!=="m365"||flushing||!S.queue.length)return updateSync();
+  if(S.mode!=="m365"){if(S.queue.length){S.queue.forEach(function(c){S.checks.push(hydrate(c))});S.queue=[];persistQueue();saveLocalChecks()}return updateSync()}
+  if(flushing||!S.queue.length)return updateSync();
   if(!navigator.onLine){S.syncState="offline";return updateSync()}
   flushing=true; updateSync();
   try{var base=await itemBase();
@@ -307,12 +311,60 @@ async function pull(){
 function updateSync(){
   var el=$("#sync"),q=S.queue.length,t;
   if(S.mode==="demo")t='<span class="dot d-none"></span>Demo';
+  else if(S.mode==="local")t='<span class="dot d-ok"></span>Auf dem iPhone';
   else if(!S.account)t='<span class="dot d-defekt"></span>Nicht angemeldet';
   else if(S.syncState==="busy"||flushing)t='<span class="dot d-mangel"></span>Synchronisiere…';
   else if(S.syncState==="offline")t='<span class="dot d-mangel"></span>Offline'+(q?" · "+q+" offen":"");
   else if(S.syncState==="err")t='<span class="dot d-defekt"></span>'+(q?q+" nicht übertragen":"Fehler");
   else t='<span class="dot d-ok"></span>'+(q?q+" offen":"Aktuell");
   el.innerHTML=t;
+}
+
+/* ===== Excel laden / Sicherung (lokaler Modus) ===== */
+async function xlsxLib(){if(!window.XLSX)await loadScript(XLSX_URL);return window.XLSX}
+function pickFile(){var f=$("#fileIn");f.value="";f.click()}
+async function importFile(file){
+  try{
+    var X=await xlsxLib(),wb=X.read(await file.arrayBuffer(),{type:"array"});
+    var dn=wb.SheetNames.filter(function(n){return n.toLowerCase()==="ipads"})[0]||wb.SheetNames[0];
+    var raw=X.utils.sheet_to_json(wb.Sheets[dn],{header:1,defval:"",raw:true}).filter(function(r){return r.some(function(v){return v!==""})});
+    var devs=parseDevices(raw);
+    if(!devs.length)throw new Error("In der Datei wurde keine Spalte „ipad_nr“ mit aktiven iPads gefunden. Bitte die Datei „iPad-Wartung.xlsx“ wählen.");
+    var added=0,pn=wb.SheetNames.filter(function(n){return n.toLowerCase()==="pruefungen"})[0];
+    if(pn){var cr=X.utils.sheet_to_json(wb.Sheets[pn],{header:1,defval:"",raw:true});var have={};S.checks.forEach(function(c){have[c.id]=1});
+      parseChecks(cr).forEach(function(c){if(!have[c.id]){have[c.id]=1;S.checks.push(c);added++}})}
+    S.devices=devs; store("localRaw",raw); saveLocalChecks(); index();
+    if(S.person&&!persons()[S.person])S.person=null;
+    render(); toast(devs.length+" aktive iPads geladen"+(added?", "+added+" Prüfungen übernommen":""));
+  }catch(e){S.error="Die Datei konnte nicht gelesen werden: "+e.message;render()}
+}
+async function exportFile(){
+  try{
+    var X=await xlsxLib(),wb=X.utils.book_new();
+    var raw=store("localRaw")||[["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(S.devices.map(function(d){return[d.nr,"aktiv",d.standort,d.kurs,d.jamf,d.betreuer,d.pruefer,d.anschluss,d.pencil,d.da,d.bem]}));
+    var ws1=X.utils.aoa_to_sheet(raw);ws1["!cols"]=[{wch:9},{wch:13},{wch:34},{wch:28},{wch:20},{wch:10},{wch:9},{wch:11},{wch:8},{wch:13},{wch:36}];
+    X.utils.book_append_sheet(wb,ws1,"iPads");
+    var rows=allChecks().slice().sort(function(a,b){return a.t-b.t}).map(checkToRow);
+    var ws2=X.utils.aoa_to_sheet([CHECK_COLS].concat(rows));ws2["!cols"]=[{wch:16},{wch:20},{wch:8},{wch:9},{wch:30},{wch:10},{wch:12},{wch:13},{wch:13},{wch:34},{wch:10},{wch:14}];
+    X.utils.book_append_sheet(wb,ws2,"Pruefungen");
+    var d=new Date(),name="iPad-Wartung_"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+".xlsx";
+    var blob=new Blob([X.write(wb,{type:"array",bookType:"xlsx"})],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    var file=null;try{file=new File([blob],name,{type:blob.type})}catch(e){}
+    if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+      try{await navigator.share({files:[file],title:name})}catch(e){if(e&&e.name==="AbortError")return;throw e}
+    }else{var u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000)}
+    store("lastBackup",isoLocal(new Date()));render();toast("Sicherung erstellt");
+  }catch(e){S.error="Die Sicherung konnte nicht erstellt werden: "+e.message;render()}
+}
+function isStandalone(){try{return window.navigator.standalone===true||matchMedia("(display-mode: standalone)").matches}catch(e){return false}}
+function isIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)}
+function localBanner(){
+  if(S.mode!=="local"||!S.devices.length)return"";
+  var h="";
+  if(isIOS()&&!isStandalone())h+='<div class="banner err"><b>Bitte zum Home-Bildschirm hinzufügen.</b> Im Safari-Tab löscht das iPhone die Daten, wenn die Seite 7 Tage nicht geöffnet wird. Teilen → „Zum Home-Bildschirm“, danach nur noch über das Symbol öffnen.</div>';
+  var lb=parseTime(store("lastBackup")),n=allChecks().length;
+  if(n&&(!lb||daysAgo(lb)>14))h+='<div class="banner demo">Letzte Sicherung: '+(lb?fmtD(lb):"noch keine")+'. <button class="btn small" data-act="export" style="margin-left:6px">Jetzt sichern</button></div>';
+  return h;
 }
 
 /* ===== Bericht ===== */
@@ -348,14 +400,14 @@ function errBanner(){return S.error?'<div class="banner err">'+esc(S.error)+"</d
 
 function viewPerson(){
   var p=persons(),keys=Object.keys(p).sort();
-  return '<div class="stack"><h2>Wer prüft heute?</h2><p class="hint">Du siehst danach zuerst deine eigenen Räume. Wechseln kannst du jederzeit oben rechts.</p>'+demoBanner()+
+  return '<div class="stack">'+(keys.length?'<h2>Wer prüft heute?</h2><p class="hint">Du siehst danach zuerst deine eigenen Räume. Wechseln kannst du jederzeit oben rechts.</p>':'<h2>iPad-Wartung einrichten</h2>')+demoBanner()+errBanner()+
    (keys.length?'<div class="persons">'+keys.map(function(k){return '<button class="card" data-act="person" data-p="'+esc(k)+'" style="flex-direction:row"><span class="big">'+esc(k)+'</span><span class="meta">'+p[k]+" iPads in "+rooms(checkable().filter(function(d){return d.pruefer===k})).length+" Räumen</span></button>"}).join("")+"</div>"
-   :'<div class="empty">Noch keine Geräte geladen. '+(S.mode==="m365"&&!S.account?'<br><br><button class="btn primary" data-act="login">Mit Schulkonto anmelden</button>':S.mode==="demo"?"Bitte zuerst die Verbindung zu eurer Excel-Datei einrichten.<br><br><button class=\"btn primary\" data-act=\"settings\">Einstellungen öffnen</button>":"In der Excel-Datei muss die Spalte „pruefer“ ausgefüllt sein.")+"</div>")+"</div>";
+   :'<div class="empty">'+(S.mode==="local"?"":"Noch keine Geräte geladen. ")+(S.mode==="m365"&&!S.account?'<br><br><button class="btn primary" data-act="login">Mit Schulkonto anmelden</button>':S.mode==="local"?"<b>Willkommen!</b><br>Lade einmal die Datei „iPad-Wartung.xlsx“, z. B. aus der Dateien-App oder aus OneDrive. Die Daten bleiben nur auf diesem Gerät.<br><br><button class=\"btn primary\" data-act=\"import\">Excel-Datei laden</button>":"In der Excel-Datei muss die Spalte „pruefer“ ausgefüllt sein.")+"</div>")+"</div>";
 }
 
 function viewRooms(){
   var dg=currentDg(),list=S.showAll?checkable():checkable().filter(function(d){return d.pruefer===S.person}),rs=rooms(list),h=[];
-  h.push(errBanner(),demoBanner());
+  h.push(errBanner(),demoBanner(),localBanner());
   if(S.mode==="m365"&&!S.account)h.push('<div class="banner err">Bitte melde dich mit deinem Schulkonto an, damit die Prüfungen in Excel gespeichert werden.<div style="margin-top:10px"><button class="btn primary small" data-act="login">Anmelden</button></div></div>');
   if(dg){var done=0,mineAll=checkable().filter(function(d){return d.pruefer===S.person});mineAll.forEach(function(d){if(doneInDg(d.nr,dg))done++});
     h.push('<div class="run"><div><span class="label">Wartung läuft seit '+fmtD(parseTime(dg.start))+'</span><br><b>'+done+" von "+mineAll.length+' deiner iPads geprüft</b></div><div class="bar"><i style="width:'+(mineAll.length?Math.round(done/mineAll.length*100):0)+'%"></i></div><button class="btn primary" data-act="finish">Wartung abschließen &amp; Bericht</button></div>');}
@@ -416,14 +468,20 @@ function viewOverview(){
 function viewSettings(){
   var p=Object.keys(persons()).sort(),c=S.cfg||{},h=['<h2>Einstellungen</h2>'];
   h.push('<div class="label">Ich bin</div><div class="seg" role="group">'+p.map(function(k){return '<button data-act="person" data-p="'+esc(k)+'" aria-pressed="'+(k===S.person)+'">'+esc(k)+"</button>"}).join("")+"</div>");
-  h.push('<div class="label" style="margin-top:8px">Verbindung zu Microsoft 365</div>');
+  if(S.mode==="local"){var lb=parseTime(store("lastBackup"));
+    h.push(errBanner(),'<div class="label" style="margin-top:8px">Daten auf diesem iPhone</div><div class="card"><b>'+S.devices.length+" aktive iPads · "+allChecks().length+' Prüfungen</b><div class="meta">Letzte Sicherung: '+(lb?fmtDT(lb):"noch keine")+'</div>'+
+      '<button class="btn primary" data-act="export">Sicherung als Excel speichern</button><button class="btn" data-act="import">Excel-Datei laden</button>'+
+      '<p class="hint">„Excel-Datei laden“ übernimmt die Geräteliste aus dem Blatt „iPads“. Enthält die Datei auch das Blatt „Pruefungen“ (z. B. eine Sicherung), werden fehlende Prüfungen ergänzt. Vorhandene Prüfungen gehen nicht verloren.</p></div>');
+    h.push(S.confirmWipe?'<div class="run"><b>Wirklich alle Daten auf diesem iPhone löschen?</b><span class="hint">Geräteliste und alle Prüfungen werden entfernt. Vorher eine Sicherung speichern.</span><div class="row"><button class="btn danger" data-act="wipe-yes">Löschen</button><button class="btn" data-act="wipe-no">Abbrechen</button></div></div>':'<button class="btn" data-act="wipe">Alle Daten auf diesem iPhone löschen</button>');}
+  h.push('<div class="label" style="margin-top:8px">Verbindung zu Microsoft 365 (optional)</div>');
   if(S.mode==="m365")h.push('<div class="card"><b>'+(S.account?"Angemeldet als "+esc(S.account.username):"Nicht angemeldet")+'</b><div class="meta">Daten aus eurer Excel-Datei · '+S.queue.length+' Prüfungen warten auf Übertragung</div><div class="row">'+(S.account?'<button class="btn small" data-act="pull">Jetzt synchronisieren</button><button class="btn small" data-act="logout">Abmelden</button>':'<button class="btn primary small" data-act="login">Anmelden</button>')+"</div></div>");
-  h.push('<details'+(S.mode==="demo"?" open":"")+'><summary>Verbindungsdaten '+(S.mode==="demo"?"eintragen":"ändern")+'</summary><form id="cfgForm" class="stack" style="margin-top:12px">'+
+  if(S.mode!=="m365")h.push('<p class="hint">Nur nötig, wenn mehrere Personen gemeinsam in eine Excel-Datei in OneDrive/SharePoint speichern sollen. Dafür muss die App in Microsoft Entra registriert sein.</p>');
+  h.push('<details><summary>Verbindungsdaten '+(S.mode==="m365"?"ändern":"eintragen")+'</summary><form id="cfgForm" class="stack" style="margin-top:12px">'+
     '<label class="stack" style="gap:4px"><span class="meta">Anwendungs-ID (Client-ID, von der IT)</span><input type="text" id="cfgClient" autocomplete="off" value="'+esc(c.clientId||"")+'"></label>'+
     '<label class="stack" style="gap:4px"><span class="meta">Verzeichnis-ID (Tenant-ID, von der IT)</span><input type="text" id="cfgTenant" autocomplete="off" value="'+esc(c.tenantId||"")+'"></label>'+
     '<label class="stack" style="gap:4px"><span class="meta">Freigabelink der Excel-Datei „iPad-Wartung.xlsx“</span><input type="text" id="cfgFile" autocomplete="off" value="'+esc(c.fileUrl||"")+'"></label>'+
     '<button class="btn primary" type="submit">Speichern und verbinden</button>'+
-    (S.mode==="m365"?'<button class="btn" type="button" data-act="cfgclear">Verbindung entfernen (zurück zur Demo)</button>':"")+
+    (S.mode==="m365"?'<button class="btn" type="button" data-act="cfgclear">Verbindung entfernen (Daten nur auf diesem Gerät)</button>':"")+
     '<p class="hint">Einfacher für die Kollegen: Den Einrichtungslink aus „Link für Kollegen“ verschicken. Wer ihn öffnet, hat alles automatisch eingetragen.</p></form></details>');
   if(S.mode==="m365")h.push('<button class="btn" data-act="setuplink">Link für Kollegen kopieren</button>');
   if(S.mode==="demo")h.push('<button class="btn" data-act="demoreset">Demo-Daten zurücksetzen</button>');
@@ -458,6 +516,7 @@ function reportHtml(){
   return '<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-label="Bericht"><div class="grab"></div><h2>Bericht</h2>'+
    '<p class="hint">Kopieren und z. B. in Teams oder eine Mail einfügen.</p><pre class="report" id="reportText">'+esc(S.report)+'</pre>'+
    '<div class="row"><button class="btn primary" data-act="copy">Text kopieren</button>'+(share?'<button class="btn" data-act="share">Teilen</button>':"")+'</div>'+
+   (S.mode==="local"?'<button class="btn" data-act="export">Sicherung als Excel speichern</button>':"")+
    (S.confirmEnd?'<div class="run"><b>Durchgang wirklich beenden?</b><span class="hint">Danach beginnt die nächste Prüfung mit einem neuen Durchgang. Die Ergebnisse bleiben gespeichert.</span><div class="row"><button class="btn primary" data-act="end-yes">Beenden</button><button class="btn" data-act="end-no">Abbrechen</button></div></div>'
     :'<div class="row"><button class="btn" data-act="closereport">Weiter prüfen</button><button class="btn okb" data-act="end">Durchgang beenden</button></div>')+"</div></div>";
 }
@@ -512,6 +571,11 @@ document.addEventListener("click",function(e){
   if(a==="copy"){var txt=S.report;var done=function(){toast("Text kopiert")};
     try{navigator.clipboard.writeText(txt).then(done,function(){selectReport()})}catch(err){selectReport()}return}
   if(a==="share"){try{navigator.share({title:"iPad-Wartung",text:S.report}).catch(function(){})}catch(err){}return}
+  if(a==="import"){pickFile();return}
+  if(a==="export"){exportFile();return}
+  if(a==="wipe"){S.confirmWipe=true;render();return}
+  if(a==="wipe-no"){S.confirmWipe=false;render();return}
+  if(a==="wipe-yes"){["localRaw","localChecks","queue","dg","person","lastBackup"].forEach(function(k){store(k,null)});S.devices=[];S.checks=[];S.queue=[];S.person=null;S.confirmWipe=false;S.tab="rooms";index();render();toast("Daten gelöscht");return}
   if(a==="login"){login();return}
   if(a==="logout"){logout();return}
   if(a==="pull"){pull();return}
@@ -528,6 +592,7 @@ document.addEventListener("submit",function(e){if(e.target.id!=="cfgForm")return
   if(changed&&S.mode==="m365"&&S.queue.length&&!S.confirmSwitch){S.confirmSwitch=true;toast(S.queue.length+" Prüfungen sind noch nicht übertragen. Erst synchronisieren oder nochmal tippen zum Verwerfen.");return}
   store("cfg",c);store("item",null);if(changed||S.mode==="demo"){store("queue",[]);store("cacheChecks",null);store("cacheDevices",null);store("dg",null)}location.reload()});
 window.addEventListener("online",function(){flush()});
+document.addEventListener("change",function(e){if(e.target.id==="fileIn"&&e.target.files[0]){S.error="";importFile(e.target.files[0])}});
 document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.mode==="m365"&&S.account)pull()});
 
 /* ===== Start ===== */
@@ -538,9 +603,13 @@ document.addEventListener("visibilitychange",function(){if(!document.hidden&&S.m
     S.devices=store("cacheDevices")||[]; S.checks=(store("cacheChecks")||[]).map(hydrate); index(); render();
     try{await initMsal()}catch(e){S.error="Anmeldung konnte nicht gestartet werden: "+e.message}
     render(); if(S.account)pull();
+  }else if(EMBEDDED_DEVICES.length){
+    S.mode="demo"; S.devices=parseDevices([["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(EMBEDDED_DEVICES));
+    seedDemo(); S.queue=(store("queue")||[]); flush(); index(); render();
   }else{
-    S.mode="demo"; S.devices=parseDevices(EMBEDDED_DEVICES.length?[["ipad_nr","status","standort","kurs_projekt","name_jamf","betreuer","pruefer","anschluss","pencil","dauerausleihe","bemerkung"]].concat(EMBEDDED_DEVICES):[]);
-    seedDemo(); S.queue=(store("queue")||[]); index(); render();
+    S.mode="local"; S.devices=parseDevices(store("localRaw")||[]); S.checks=(store("localChecks")||[]).map(hydrate);
+    S.queue=(store("queue")||[]); flush(); index(); render();
+    try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   }
   try{if("serviceWorker" in navigator&&window.top===window.self&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(function(){})}catch(e){}
 })();
